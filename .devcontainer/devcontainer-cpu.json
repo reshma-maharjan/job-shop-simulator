@@ -1,0 +1,14 @@
+{
+  "name": "Custom Dev Container",
+  "context": "..",
+  "dockerFile": "./Dockerfile",
+  "runArgs": ["--init"],
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  },
+  "remoteUser": "vscode",
+  "extensions": [
+    "ms-python.python",
+    "ms-vscode.cpptools"
+  ]
+}

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "cmake>=3.30", "nanobind==1.9.2", "ninja"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jobshop"
+version = "0.1.0"
+description = "Job Shop Scheduling Algorithms"
+authors = [{name = "Per-Arne Andersen", email = "per@sysx.no"}]
+license = {file = "LICENSE"}
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/cair/jobshop"
+"Bug Tracker" = "https://github.com/cair/jobshop/issues"
+
+[tool.setuptools]
+packages = ["jsp"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
