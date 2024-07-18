@@ -65,8 +65,8 @@ This project uses CMakePresets.json to manage build configurations. There are tw
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/jobshop.git
-   cd jobshop
+   git clone https://github.com/cair/job-shop-simulator.git
+   cd job-shop-simulator
    ```
 
 2. To configure and build the project in debug mode:
