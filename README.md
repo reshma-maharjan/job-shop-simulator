@@ -11,6 +11,46 @@ This project implements various algorithms for solving the Job Shop Scheduling P
 - Visualization of scheduling results
 - Python bindings for easy integration
 
+### Implemented Algorithms
+| Algorithm | Implemented | Notes |
+|-----------|:-----------:|-------|
+| Q-Learning | ✅ | |
+| SARSA | ❌ | |
+| DQN (Deep Q-Network) | ❌ | |
+| Double DQN | ❌ | |
+| Dueling DQN | ❌ | |
+| Actor-Critic | ✅ | |
+| A2C (Advantage Actor-Critic) | ❌ | |
+| A3C (Asynchronous Advantage Actor-Critic) | ❌ | |
+| PPO (Proximal Policy Optimization) | ❌ | |
+| TRPO (Trust Region Policy Optimization) | ❌ | |
+| SAC (Soft Actor-Critic) | ❌ | |
+| DDPG (Deep Deterministic Policy Gradient) | ❌ | |
+| TD3 (Twin Delayed DDPG) | ❌ | |
+| MADDPG (Multi-Agent DDPG) | ❌ | |
+| QMIX (Q-Mixing) | ❌ | |
+| VDN (Value Decomposition Networks) | ❌ | |
+| Genetic Algorithms | ❌ | |
+| Particle Swarm Optimization | ❌ | |
+| Simulated Annealing | ❌ | |
+| Ant Colony Optimization | ❌ | |
+
+### Implemented Simulator Features
+| Feature | Implemented | Notes |
+|---------|:-----------:|-------|
+| Jobs | ✅ | |
+| Operations | ✅ | |
+| Actions | ✅ | |
+| Bindings | ✅ | |
+| Taillard | ✅ | |
+| Manual Environment Creator | ❌ | |
+| Tool Changing | ❌ | |
+| Tool Properties | ❌ | |
+| Machine Breakdowns | ❌ | |
+| Job Priority | ❌ | |
+| Setup Times | ❌ | |
+| Due Dates | ❌ | |
+
 ## Dependencies
 
 This project uses vcpkg to manage C++ dependencies. The dependencies are specified in the `vcpkg.json` manifest file in the root directory of the project.
