@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     python3-pip \
     python3-venv \
+    ninja-build \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -53,14 +54,6 @@ ENV PATH="/home/$USERNAME/.venv/bin:$PATH"
 RUN pip3 install --upgrade pip && \
     pip3 install nanobind==1.9.2
 
-# Install latest cmake
-WORKDIR /home/$USERNAME
-COPY jsp /home/$USERNAME/jsp/jsp
-COPY setup.py /home/$USERNAME/jsp
-COPY README.md /home/$USERNAME/jsp
-COPY LICENSE /home/$USERNAME/jsp
-COPY pyproject.toml /home/$USERNAME/jsp
-RUN chown -R $USERNAME:$USERNAME /home/$USERNAME/jsp
 
 # Install latest cmake
 
@@ -70,13 +63,29 @@ RUN mkdir /opt/cmake && \
     ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake && \
     rm /cmake-3.30.0-linux-x86_64.sh
 
-USER $USERNAME
 
-RUN mkdir -p /home/$USERNAME/jsp/jsp
-RUN rm -rf /home/$USERNAME/jsp/jsp/.vcpkg && git clone https://github.com/microsoft/vcpkg.git /home/$USERNAME/jsp/jsp/.vcpkg && cd /home/$USERNAME/jsp/jsp/.vcpkg && ./bootstrap-vcpkg.sh
 
+RUN rm -rf /home/$USERNAME/.vcpkg && git clone https://github.com/microsoft/vcpkg.git /home/$USERNAME/.vcpkg && cd /home/$USERNAME/.vcpkg && ./bootstrap-vcpkg.sh
+
+# Install latest cmake
+WORKDIR /home/$USERNAME
+COPY jsp /home/$USERNAME/jsp/jsp
+COPY setup.py /home/$USERNAME/jsp
+COPY README.md /home/$USERNAME/jsp
+COPY LICENSE /home/$USERNAME/jsp
+COPY pyproject.toml /home/$USERNAME/jsp
+
+
+RUN mv /home/$USERNAME/.vcpkg /home/$USERNAME/jsp/jsp/.vcpkg
+RUN chown -R $USERNAME:$USERNAME /home/$USERNAME/jsp
 
 RUN cd /home/$USERNAME/jsp && pip3 install . -vvv
 
+USER $USERNAME
+
+# set VCPKG_ROOT
+ENV VCPKG_ROOT=/home/$USERNAME/jsp/jsp/.vcpkg
+
 # Set the default shell to bash
 SHELL ["/bin/bash", "-c"]
+
