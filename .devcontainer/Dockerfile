@@ -56,35 +56,16 @@ RUN pip3 install --upgrade pip && \
 
 
 # Install latest cmake
-
 ADD https://cmake.org/files/v3.30/cmake-3.30.0-linux-x86_64.sh /cmake-3.30.0-linux-x86_64.sh
 RUN mkdir /opt/cmake && \
     sh /cmake-3.30.0-linux-x86_64.sh --prefix=/opt/cmake --skip-license && \
     ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake && \
     rm /cmake-3.30.0-linux-x86_64.sh
 
-
-
-RUN rm -rf /home/$USERNAME/.vcpkg && git clone https://github.com/microsoft/vcpkg.git /home/$USERNAME/.vcpkg && cd /home/$USERNAME/.vcpkg && ./bootstrap-vcpkg.sh
-
-# Install latest cmake
-WORKDIR /home/$USERNAME
-COPY jsp /home/$USERNAME/jsp/jsp
-COPY setup.py /home/$USERNAME/jsp
-COPY README.md /home/$USERNAME/jsp
-COPY LICENSE /home/$USERNAME/jsp
-COPY pyproject.toml /home/$USERNAME/jsp
-
-
-RUN mv /home/$USERNAME/.vcpkg /home/$USERNAME/jsp/jsp/.vcpkg
-RUN chown -R $USERNAME:$USERNAME /home/$USERNAME/jsp
-
-RUN cd /home/$USERNAME/jsp && pip3 install . -vvv
-
 USER $USERNAME
 
-# set VCPKG_ROOT
-ENV VCPKG_ROOT=/home/$USERNAME/jsp/jsp/.vcpkg
+RUN rm -rf /home/$USERNAME/.vcpkg && git clone https://github.com/microsoft/vcpkg.git /home/$USERNAME/.vcpkg && cd /home/$USERNAME/.vcpkg && ./bootstrap-vcpkg.sh
+ENV VCPKG_ROOT="/home/$USERNAME/.vcpkg"
 
 # Set the default shell to bash
 SHELL ["/bin/bash", "-c"]

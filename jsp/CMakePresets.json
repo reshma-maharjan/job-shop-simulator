@@ -23,9 +23,7 @@
           "type": "FILEPATH"
         }
       },
-      "environment": {
-
-      }
+      "environment": {}
     },
     {
       "name": "debug",

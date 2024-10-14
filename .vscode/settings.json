@@ -1,4 +1,5 @@
 {
-    "cmake.buildDirectory": "${workspaceFolder}/cmake-build-debug",
-    "cmake.sourceDirectory": "${workspaceFolder}/jsp"
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.sourceDirectory": "${workspaceFolder}/jsp",
+    
 }
