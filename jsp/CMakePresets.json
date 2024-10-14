@@ -31,7 +31,7 @@
       "displayName": "Debug",
       "description": "Debug build using Ninja generator",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
