@@ -34,7 +34,7 @@ find_package(imgui CONFIG REQUIRED)
 
 # Add source files
 set(SOURCES
-        src/job_shop_environment.cpp
+        src/dummy.cpp
 )
 
 # Add header files

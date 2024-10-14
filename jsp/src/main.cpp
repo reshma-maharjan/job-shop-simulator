@@ -3,7 +3,7 @@
 #include "job_shop_actor_critic.h"
 #include "job_shop_plotter.h"
 #include "job_shop_taillard_generator.h"
-//#include "job_shop_manual_generator.h"
+#include "job_shop_manual_generator.h"
 #include <iostream>
 #include <thread>
 #include <indicators/progress_bar.hpp>
@@ -18,10 +18,10 @@ struct UpdateData {
 template <typename Algorithm>
 void runExperiments(int n_threads, bool use_gui) {
     // Load problem
-    auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA42);
-    std::cout << "Optimal makespan for TA42: " << ta01Optimal << std::endl;
+    //auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA42);
+    //std::cout << "Optimal makespan for TA42: " << ta01Optimal << std::endl;
 
-    //auto [manualJobs, _] = ManualJobShopGenerator::generateFromFile("/home/per/jsp/jsp/environments/doris.csv");
+    auto [jobs, ta01Optimal] = ManualJobShopGenerator::generateFromFile("/home/per/jsp/jsp/environments/doris.csv");
 
     // Create environments and agents
     std::vector<std::unique_ptr<JobShopEnvironment>> environments;
@@ -31,6 +31,12 @@ void runExperiments(int n_threads, bool use_gui) {
         environments.push_back(std::make_unique<JobShopEnvironment>(jobs));
         agents.push_back(std::make_unique<Algorithm>(*environments.back(), 0.1, 0.9, 0.3));
     }
+
+    // Generate operation graph (only once)
+    environments[0]->generateOperationGraph("operation_graph.dot");
+    std::cout << "Operation graph generated: operation_graph.dot\n";
+    std::cout << "Use a DOT viewer to visualize the graph.\n";
+
 
     std::unique_ptr<LivePlotter> plotter = nullptr;
     if (use_gui) {
