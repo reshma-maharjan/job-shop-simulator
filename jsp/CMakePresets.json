@@ -13,6 +13,10 @@
       "generator": "Ninja",
       "hidden": true,
       "cacheVariables": {
+        "PYTHON_DIR": {
+          "type": "PATH",
+          "value": "$env{VIRTUAL_ENV}"
+        },
         "CMAKE_CXX_STANDARD": "23",
         "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "VCPKG_INSTALLED_DIR": "$env{VCPKG_ROOT}/packages",
@@ -24,7 +28,8 @@
         }
       },
       "environment": {
-        "VCPKG_ROOT": ".vcpkg"
+        "VCPKG_ROOT": ".vcpkg",
+        "VIRTUAL_ENV": "/home/per/jsp/venv"
       }
     },
     {

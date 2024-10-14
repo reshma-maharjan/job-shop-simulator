@@ -3,6 +3,7 @@
 #include "job_shop_actor_critic.h"
 #include "job_shop_plotter.h"
 #include "job_shop_taillard_generator.h"
+//#include "job_shop_manual_generator.h"
 #include <iostream>
 #include <thread>
 #include <indicators/progress_bar.hpp>
@@ -19,6 +20,8 @@ void runExperiments(int n_threads, bool use_gui) {
     // Load problem
     auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA42);
     std::cout << "Optimal makespan for TA42: " << ta01Optimal << std::endl;
+
+    //auto [manualJobs, _] = ManualJobShopGenerator::generateFromFile("/home/per/jsp/jsp/environments/doris.csv");
 
     // Create environments and agents
     std::vector<std::unique_ptr<JobShopEnvironment>> environments;

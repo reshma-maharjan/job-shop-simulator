@@ -1,5 +1,3 @@
-// job_shop_taillard_generator.h
-
 #pragma once
 
 #include <vector>
@@ -61,30 +59,26 @@ public:
         for (int i = 0; i < numJobs; ++i) {
             jobs[i].operations.resize(numMachines);
             for (int j = 0; j < numMachines; ++j) {
-                dataStream >> jobs[i].operations[j];
+                dataStream >> jobs[i].operations[j].duration;
             }
         }
 
         // Read machine orders
         for (int i = 0; i < numJobs; ++i) {
-            jobs[i].machines.resize(numMachines);
-            jobs[i].eligibleMachines.resize(numMachines);
             for (int j = 0; j < numMachines; ++j) {
                 int machine;
                 dataStream >> machine;
-                jobs[i].machines[j] = machine - 1;  // Adjust for 0-based indexing
+                jobs[i].operations[j].machine = machine - 1;  // Adjust for 0-based indexing
 
-                // Set all machines as eligible for each operation
-                jobs[i].eligibleMachines[j].set();  // Sets all bits to 1
+                // Set only the assigned machine as eligible
+                jobs[i].operations[j].eligibleMachines.reset();
+                jobs[i].operations[j].eligibleMachines.set(jobs[i].operations[j].machine);
             }
         }
 
-
-        auto optimalSolution = TaillardJobShopGenerator::loadOptimalSolution(instance);
-        int optimalMakespan = TaillardJobShopGenerator::calculateOptimalMakespan(jobs, optimalSolution);
-        return {jobs, optimalMakespan}; // Return jobs and a placeholder for optimal makespan
+        int optimalMakespan = loadOptimalMakespan(instance);
+        return {jobs, optimalMakespan};
     }
-
 
     static void verifyJobsData(const std::vector<Job>& jobs) {
         if (jobs.empty()) {
@@ -98,21 +92,15 @@ public:
             if (jobs[i].operations.size() != numMachines) {
                 throw std::runtime_error(fmt::format("Job {} has incorrect number of operations", i));
             }
-            if (jobs[i].machines.size() != numMachines) {
-                throw std::runtime_error(fmt::format("Job {} has incorrect number of machines", i));
-            }
-            if (jobs[i].eligibleMachines.size() != numMachines) {
-                throw std::runtime_error(fmt::format("Job {} has incorrect number of eligible machine lists", i));
-            }
 
             for (int j = 0; j < numMachines; ++j) {
-                if (jobs[i].operations[j] <= 0) {
+                if (jobs[i].operations[j].duration <= 0) {
                     throw std::runtime_error(fmt::format("Job {} operation {} has invalid duration", i, j));
                 }
-                if (jobs[i].machines[j] < 0 || jobs[i].machines[j] >= numMachines) {
+                if (jobs[i].operations[j].machine < 0 || jobs[i].operations[j].machine >= numMachines) {
                     throw std::runtime_error(fmt::format("Job {} operation {} has invalid machine index", i, j));
                 }
-                if (jobs[i].eligibleMachines[j].size() != numMachines) {
+                if (jobs[i].operations[j].eligibleMachines.count() != 1) {
                     throw std::runtime_error(fmt::format("Job {} operation {} has incorrect number of eligible machines", i, j));
                 }
             }
@@ -146,7 +134,7 @@ public:
                 throw std::runtime_error(fmt::format("Too many operations for job {} in optimal solution", job));
             }
 
-            int machine = jobs[job].machines[machineIndex];
+            int machine = jobs[job].operations[machineIndex].machine;
             if (machineUsed[job][machine]) {
                 throw std::runtime_error(fmt::format("Machine {} used twice for job {} in optimal solution", machine, job));
             }
@@ -171,20 +159,21 @@ public:
     }
 
 private:
-    static std::vector<int> loadOptimalSolution(TaillardInstance instance, bool showProgress = true) {
+
+
+    static int loadOptimalMakespan(TaillardInstance instance, bool showProgress = true) {
         auto iD = getTaillardInstanceId(instance);
         std::string url = fmt::format("http://jobshop.jjvh.nl/solutions_file.php?instance_id={}", iD);
         std::string solutionData = CurlUtility::FetchUrl(url, showProgress);
 
         std::istringstream dataStream(solutionData);
-        std::vector<int> optimalSolution;
-        int operation;
-        while (dataStream >> operation) {
-            optimalSolution.push_back(operation - 1);  // Adjust for 0-based indexing
-        }
+        int optimalMakespan;
+        dataStream >> optimalMakespan;
 
-        return optimalSolution;
+        return optimalMakespan;
     }
+
+
 
     static int calculateOptimalMakespan(const std::vector<Job>& jobs, const std::vector<int>& optimalSolution) {
         int numJobs = jobs.size();
@@ -196,8 +185,9 @@ private:
 
         for (int op : optimalSolution) {
             int job = op % numJobs;
-            int machine = jobs[job].machines[op / numJobs];
-            int duration = jobs[job].operations[op / numJobs];
+            int opIndex = op / numJobs;
+            int machine = jobs[job].operations[opIndex].machine;
+            int duration = jobs[job].operations[opIndex].duration;
 
             int startTime = std::max(jobCompletionTimes[job], machineAvailability[machine]);
             int endTime = startTime + duration;
@@ -209,5 +199,4 @@ private:
 
         return optimalMakespan;
     }
-
 };
