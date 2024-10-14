@@ -1,0 +1,106 @@
+[METADATA]
+# This section contains metadata about the job shop problem
+num_jobs: 36
+num_machines: 3
+[METADATA END]
+
+[JOB DEPENDENCIES]
+# Only jobs with dependencies are listed
+# Format: jobIndex: depJobIndex1, depJobIndex2, ...
+
+1:0
+2:10
+3:10
+4:10
+5:10
+6:10
+7:4
+8:4
+9:12,13,14
+10:0
+11:10
+12:11
+13:11
+14:11
+15:19,29
+16:7
+17:12,13,14
+18:17
+19:15
+20:15
+21:15
+22:12,13,14,18,29
+23:12,13,14,22
+24:9
+25:9,12,13,14
+26:31
+27:31
+28:7
+29:28
+30:23
+31:17
+32:4
+33:4
+34:12,13,14
+35:24
+[JOB DEPENDENCIES END]
+
+
+[OPERATION DURATIONS]
+# Each line represents a job
+# The number of operations is now 1 for each job
+# Job 0 has 1 operation with duration 49
+# Job 1 has 1 operation with duration 64, and so on
+49
+64
+36
+12
+210
+24
+10
+0
+24
+0
+24
+48
+60
+0
+0
+48
+50
+48
+24
+0
+0
+0
+48
+5
+0
+10
+72
+36
+24
+20
+10
+70
+10
+10
+10
+10
+[OPERATION DURATIONS END]
+
+[OPERATION DEPENDENCIES]
+# Only jobs with dependencies are listed
+# Format remains opIndex1:depOpIndex1,depOpIndex2,...
+
+# Job 1 (Operation 1 depends on Operation 0)
+#1:1:0
+
+# Job 3 (Operation 1 depends on Operation 0; Operation 2 depends on Operation 1)
+#3:1:0;2:1
+
+# Job 5 (Operation 1 depends on Operation 0)
+#5:1:0
+
+# Continue similarly for other jobs...
+[OPERATION DEPENDENCIES END]

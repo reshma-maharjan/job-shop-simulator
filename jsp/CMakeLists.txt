@@ -20,6 +20,10 @@ endif()
 
 # Try to find nanobind
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
+
+# print path to Python executable
+message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+set(nanobind_DIR "${Python_SITELIB}/nanobind/cmake")
 find_package(nanobind CONFIG REQUIRED)
 
 if(NOT nanobind_FOUND)
@@ -30,9 +34,7 @@ find_package(imgui CONFIG REQUIRED)
 
 # Add source files
 set(SOURCES
-        src/job_shop_environment.cpp
-        src/job_shop_qlearning.cpp
-        src/job_shop_actor_critic.cpp
+        src/dummy.cpp
 )
 
 # Add header files
@@ -50,15 +52,15 @@ set(HEADERS
 
 # Create the main executable if not building for pip installation
 if(NOT DEFINED BUILD_EXECUTABLE OR BUILD_EXECUTABLE)
-    add_executable(jobshop ${SOURCES} ${HEADERS} src/main.cpp)
-    target_include_directories(jobshop PRIVATE
+    add_executable(jobshop-exe ${SOURCES} ${HEADERS} src/main.cpp)
+    target_include_directories(jobshop-exe PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${OPENGL_INCLUDE_DIR}
             ${GLEW_INCLUDE_DIRS}
             ${CURL_INCLUDE_DIRS}
             include
     )
-    target_link_libraries(jobshop PRIVATE
+    target_link_libraries(jobshop-exe PRIVATE
             ${OPENGL_LIBRARIES}
             GLEW::GLEW
             glfw
@@ -82,7 +84,7 @@ target_link_libraries(jobshop PRIVATE
 
 # Installation
 if(NOT DEFINED BUILD_EXECUTABLE OR BUILD_EXECUTABLE)
-    install(TARGETS jobshop
+    install(TARGETS jobshop-exe
             EXPORT jobshopTargets
             RUNTIME DESTINATION bin
             LIBRARY DESTINATION lib
