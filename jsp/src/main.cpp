@@ -18,10 +18,10 @@ struct UpdateData {
 template <typename Algorithm>
 void runExperiments(int n_threads, bool use_gui) {
     // Load problem
-    //auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA42);
+    auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA42);
     //std::cout << "Optimal makespan for TA42: " << ta01Optimal << std::endl;
 
-    auto [jobs, ta01Optimal] = ManualJobShopGenerator::generateFromFile("/home/per/jsp/jsp/environments/doris.csv");
+    //auto [jobs, ta01Optimal] = ManualJobShopGenerator::generateFromFile("/home/per/jsp/jsp/environments/doris.csv");
 
     // Create environments and agents
     std::vector<std::unique_ptr<JobShopEnvironment>> environments;
