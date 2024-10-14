@@ -88,7 +88,7 @@ NB_MODULE(jobshop, m) {
         .def("saveBestScheduleToFile", &JobShopAlgorithm::saveBestScheduleToFile);
 
     // Bind JobShopQLearning class
-    nb::class_<JobShopQLearning, JobShopAlgorithm>(m, "JobShopQLearning")
+    nb::class_<JobShopQLearning>(m, "JobShopQLearning")
         .def(nb::init<JobShopEnvironment&, double, double, double>())
         .def("runEpisode", &JobShopQLearning::runEpisode)
         .def("train", &JobShopQLearning::train)
@@ -97,7 +97,7 @@ NB_MODULE(jobshop, m) {
         .def("applyAndPrintSchedule", &JobShopQLearning::applyAndPrintSchedule);
 
     // Bind JobShopActorCritic class
-    nb::class_<JobShopActorCritic, JobShopAlgorithm>(m, "JobShopActorCritic")
+    nb::class_<JobShopActorCritic>(m, "JobShopActorCritic")
         .def(nb::init<JobShopEnvironment&, double, double, double>())
         .def("runEpisode", &JobShopActorCritic::runEpisode)
         .def("train", &JobShopActorCritic::train)
