@@ -8,6 +8,7 @@
 #include <thread>
 #include <indicators/progress_bar.hpp>
 #include <indicators/multi_progress.hpp>
+#include "job_shop_ppo.h"
 
 struct UpdateData {
     std::vector<std::vector<ScheduleEntry>> scheduleData;
@@ -15,10 +16,31 @@ struct UpdateData {
     int thread_id;
 };
 
+// Helper function to get algorithm name
+template <typename Algorithm>
+std::string getAlgorithmName();
+
+template <>
+std::string getAlgorithmName<JobShopQLearning>() {
+    return "Q-Learning";
+}
+
+template <>
+std::string getAlgorithmName<JobShopActorCritic>() {
+    return "Actor-Critic";
+}
+template <>
+std::string getAlgorithmName<JobShopPPO>() {
+    return "Proximal Policy Optimization (PPO)";
+}
+
+
 template <typename Algorithm>
 void runExperiments(int n_threads, bool use_gui) {
+    // Print the algorithm being run
+    std::cout << "=== Running Algorithm: " << getAlgorithmName<Algorithm>() << " ===" << std::endl;
     // Load problem
-    auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA42);
+    auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA02);
     //std::cout << "Optimal makespan for TA42: " << ta01Optimal << std::endl;
 
     //auto [jobs, ta01Optimal] = ManualJobShopGenerator::generateFromFile("/home/per/jsp/jsp/environments/doris.csv");
@@ -29,7 +51,18 @@ void runExperiments(int n_threads, bool use_gui) {
 
     for (int i = 0; i < n_threads; ++i) {
         environments.push_back(std::make_unique<JobShopEnvironment>(jobs));
-        agents.push_back(std::make_unique<Algorithm>(*environments.back(), 0.1, 0.9, 0.3));
+        //agents.push_back(std::make_unique<Algorithm>(*environments.back(), 0.1, 0.9, 0.3));
+
+        // Modified instantiation of agents based on the algorithm type
+        // Highlighted changes:
+        if constexpr (std::is_same_v<Algorithm, JobShopQLearning>) {
+            agents.push_back(std::make_unique<Algorithm>(*environments.back(),  0.1, 0.9, 0.3)); // QLearning constructor (3 args)
+        } else if constexpr (std::is_same_v<Algorithm, JobShopActorCritic>) {
+            agents.push_back(std::make_unique<Algorithm>(*environments.back(),  0.1, 0.9, 0.3)); // ActorCritic constructor (3 args)
+        } else if constexpr (std::is_same_v<Algorithm, JobShopPPO>) {
+            agents.push_back(std::make_unique<Algorithm>(*environments.back(), 0.1, 0.9, 0.3, 0.5)); // PPO constructor (4 args)
+        }
+        
     }
 
     // Generate operation graph (only once)
@@ -162,14 +195,15 @@ void runExperiments(int n_threads, bool use_gui) {
 }
 
 int main(int argc, char* argv[]) {
-    argc = 3;
-    argv[1] = "qlearning";
-    argv[2] = "--gui";
+    // Updated argv with proper types
+    //const char* args[] = {"program_name", "qlearning", "--no-gui"}; 
+    const char* args[] = {"program_name", "ppo", "--no-gui"};
+    argc = 3; // Simulate command-line arguments
+    argv = const_cast<char**>(args); // Cast away constness
 
     if (argc > 2) {
         std::string algorithmType = argv[1];
         std::string guiOption = argv[2];
-
 
         bool use_gui = (guiOption != "--no-gui");
 
@@ -177,6 +211,8 @@ int main(int argc, char* argv[]) {
             runExperiments<JobShopQLearning>(24, use_gui);
         } else if (algorithmType == "actorcritic") {
             runExperiments<JobShopActorCritic>(24, use_gui);
+        } else if (algorithmType == "ppo") {
+            runExperiments<JobShopPPO>(24, use_gui);
         } else {
             std::cerr << "Unknown algorithm type: " << algorithmType << std::endl;
             return 1;
@@ -188,3 +224,34 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
+
+// int main(int argc, char* argv[]) {
+//     argc = 3;
+//     argv[1] = "qlearning";
+//     argv[2] = "--no-gui";  
+
+//     if (argc > 2) {
+//         std::string algorithmType = argv[1];
+//         std::string guiOption = argv[2];
+
+
+//         bool use_gui = (guiOption != "--no-gui");
+
+//         if (algorithmType == "qlearning") {
+//             runExperiments<JobShopQLearning>(24, use_gui);
+//         } else if (algorithmType == "actorcritic") {
+//             runExperiments<JobShopActorCritic>(24, use_gui);
+//         } else if (algorithmType == "ppo") {
+//          runExperiments<JobShopPPO>(24, use_gui);
+//         } else {
+//             std::cerr << "Unknown algorithm type: " << algorithmType << std::endl;
+//             return 1;
+//         }
+//     } else {
+//         std::cerr << "Usage: " << argv[0] << " <algorithm> <gui_option>" << std::endl;
+//         return 1;
+//     }
+
+//     return 0;
+// }
