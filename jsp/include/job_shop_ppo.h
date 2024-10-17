@@ -94,6 +94,11 @@ private:
         }
 
         std::vector<Action> possibleActions = env.getPossibleActions();
+
+        if(possibleActions.size() == 0){
+            return Action{-1, -1, -1};
+        }
+
         std::vector<double> filteredProbs;
         for (const auto& action : possibleActions) {
             filteredProbs.push_back(actionProbs[action.machine]);
