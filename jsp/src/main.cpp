@@ -197,7 +197,7 @@ void runExperiments(int n_threads, bool use_gui) {
 int main(int argc, char* argv[]) {
     // Updated argv with proper types
     //const char* args[] = {"program_name", "qlearning", "--no-gui"}; 
-    const char* args[] = {"program_name", "ppo", "--no-gui"};
+    const char* args[] = {"program_name", "qlearning", "--no-gui"};
     argc = 3; // Simulate command-line arguments
     argv = const_cast<char**>(args); // Cast away constness
 
