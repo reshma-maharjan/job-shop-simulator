@@ -82,7 +82,6 @@ class CMakeBuild(build_ext):
 
 setup(
     name="jobshop",
-    version="0.1.0",
     author="Per-Arne Andersen",
     author_email="per@sysx.no",
     description="Job Shop Scheduling Algorithms",
