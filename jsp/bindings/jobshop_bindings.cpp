@@ -4,30 +4,109 @@
 #include <nanobind/stl/function.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/tuple.h>
-
+#include <nanobind/ndarray.h>
+#include <nanobind/stl/array.h>
+#include <optional>
 #include "job_shop_environment.h"
 #include "job_shop_qlearning.h"
 #include "job_shop_actor_critic.h"
 #include "job_shop_taillard_generator.h"
 #include "job_shop_plotter.h"
 #include "job_shop_algorithms.h"
+#include <multidimensional_array.hpp>
 
 namespace nb = nanobind;
 
+
+
+template<typename T, std::size_t NDim>
+void bind_multi_dim_array(nb::module_ &m, const char* name) {
+    nb::class_<MultiDimensionalArray<T, NDim>>(m, name)
+            .def(nb::init<const std::array<std::size_t, NDim>&>())
+            .def("__array__", [](MultiDimensionalArray<T, NDim>& arr, nb::kwargs kwargs) {
+                bool copy = kwargs.contains("copy") && nb::cast<bool>(kwargs["copy"]);
+
+                // throw if copy is requested
+                if (copy) {
+                    throw std::runtime_error("copy is not supported");
+                }
+
+                std::vector<size_t> shape(arr.shape().begin(), arr.shape().end());
+
+                nb::handle owner = nb::cast(&arr, nb::rv_policy::reference_internal);
+
+                return nb::ndarray<T, nb::numpy, nb::shape<>>(
+                        arr.data_ptr(),
+                        shape.size(),
+                        shape.data(),
+                        owner,
+                        nullptr,//strides.data(),
+                        nb::dtype<T>(),
+                        0,  // device_type (CPU)
+                        0   // device_id
+                );
+            }, nb::rv_policy::reference_internal)
+            .def("shape", &MultiDimensionalArray<T, NDim>::shape)
+            .def("size", &MultiDimensionalArray<T, NDim>::size)
+            .def("fill", &MultiDimensionalArray<T, NDim>::fill);
+}
+
+
+
 NB_MODULE(jobshop, m) {
+
+
+    bind_multi_dim_array<float, 1>(m, "MultiDimArray1f");
+    bind_multi_dim_array<float, 2>(m, "MultiDimArray2f");
+    bind_multi_dim_array<float, 3>(m, "MultiDimArray3f");
+    bind_multi_dim_array<double, 1>(m, "MultiDimArray1d");
+    bind_multi_dim_array<double, 2>(m, "MultiDimArray2d");
+    bind_multi_dim_array<double, 3>(m, "MultiDimArray3d");
+    bind_multi_dim_array<int, 1>(m, "MultiDimArray1i");
+    bind_multi_dim_array<int, 2>(m, "MultiDimArray2i");
+    bind_multi_dim_array<int, 3>(m, "MultiDimArray3i");
+
+
     // Bind Operation struct
     nb::class_<Operation>(m, "Operation")
-        .def(nb::init<>())
-        .def_rw("duration", &Operation::duration)
-        .def_rw("machine", &Operation::machine)
-        .def_rw("eligibleMachines", &Operation::eligibleMachines)
-        .def_rw("dependentOperations", &Operation::dependentOperations);
+            .def(nb::init<>())
+            .def_rw("duration", &Operation::duration)
+            .def_rw("machine", &Operation::machine)
+            .def_rw("eligibleMachines", &Operation::eligibleMachines)
+            .def_rw("dependentOperations", &Operation::dependentOperations)
+            .def("__getstate__", [](const Operation &op) {
+                return nb::make_tuple(
+                        op.duration,
+                        op.machine,
+                        op.eligibleMachines.to_string(),  // Convert bitset to string
+                        op.dependentOperations
+                );
+            })
+            .def("__setstate__", [](Operation &op, nb::tuple state) {
+                if (state.size() != 4) {
+                    throw std::runtime_error("Invalid state!");
+                }
+                op.duration = nb::cast<int>(state[0]);
+                op.machine = nb::cast<int>(state[1]);
+                op.eligibleMachines = std::bitset<MAX_MACHINES>(nb::cast<std::string>(state[2]));  // Convert string back to bitset
+                op.dependentOperations = nb::cast<std::vector<std::pair<int, int>>>(state[3]);
+            });
 
     // Bind Job struct
     nb::class_<Job>(m, "Job")
         .def(nb::init<>())
         .def_rw("operations", &Job::operations)
-        .def_rw("dependentJobs", &Job::dependentJobs);
+        .def_rw("dependentJobs", &Job::dependentJobs)
+         .def("__getstate__", [](const Job &job) {
+             return std::make_tuple(job.operations, job.dependentJobs);
+         })
+         .def("__setstate__", [](Job &job, const std::tuple<std::vector<Operation>, std::vector<int>> &state) {
+             new (&job) Job{
+                 std::get<0>(state),
+                 std::get<1>(state)
+             };
+         });
+
 
     // Bind Action struct
     nb::class_<Action>(m, "Action")
@@ -70,7 +149,13 @@ NB_MODULE(jobshop, m) {
     nb::class_<JobShopEnvironment>(m, "JobShopEnvironment")
         .def(nb::init<std::vector<Job>>())
         .def("step", &JobShopEnvironment::step)
-        .def("reset", &JobShopEnvironment::reset)
+        .def("reset", [](JobShopEnvironment &env, nb::kwargs kwargs) {
+            std::optional<unsigned int> seed;
+            if (kwargs.contains("seed")) {
+                seed = nb::cast<unsigned int>(kwargs["seed"]);
+            }
+            return env.reset();
+        }, nb::arg("seed") = nb::none(), "Reset the environment. Optionally provide a seed for randomization.")
         .def("getState", &JobShopEnvironment::getState)
         .def("getPossibleActions", &JobShopEnvironment::getPossibleActions)
         .def("isDone", &JobShopEnvironment::isDone)

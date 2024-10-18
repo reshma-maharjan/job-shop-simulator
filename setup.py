@@ -49,9 +49,7 @@ class CMakeBuild(build_ext):
 
         cmake_args = [
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
-            f"-DPYTHON_EXECUTABLE={sys.executable}",
-            f"-DPYTHON_INCLUDE_DIR={python_include}",
-            f"-DPYTHON_LIBRARY={python_lib}",
+            f"-DPython_EXECUTABLE={sys.executable}",
             f"-Dnanobind_DIR={nanobind_path}",
         ]
 

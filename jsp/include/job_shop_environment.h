@@ -49,6 +49,10 @@ struct State {
             , completedJobs(numJobs, false)
             , jobStartTimes(numJobs, -1) {
         jobProgress.fill(0);
+
+
+
+
     }
 };
 

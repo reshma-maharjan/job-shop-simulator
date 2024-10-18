@@ -25,3 +25,81 @@ packages = ["jsp"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+
+
+
+[tool.cibuildwheel]
+build = "*"
+test-skip = ""
+skip = [
+    "pp*",
+    "*i686*",
+    "cp38-*",  # Skip Python 3.8
+    "cp39-*",  # Skip Python 3.9
+    "cp310-*",  # Skip Python 3.10
+    #"cp*-manylinux_x86_64",
+    "cp*-manylinux_i686",
+    #"cp*-manylinux_aarch64",
+    "cp*-manylinux_ppc64le",
+    "cp*-manylinux_s390x",
+    "cp*-manylinux_pypy_*_x86_64",
+    "cp*-manylinux_pypy_*_aarch64",
+    "cp*-win32",
+    #"cp*-win_amd64",
+    "cp*-linux_x86_64",
+    #"cp*-macosx_x86_64",
+    #"cp*-macosx_arm64",
+    "cp*-musllinux_x86_64",
+    "cp*-musllinux_aarch64",
+    "cp*-musllinux_ppc64le",
+    "cp*-musllinux_s390x",
+]
+
+archs = ["auto"]
+build-frontend = "build"
+config-settings = {}
+dependency-versions = "pinned"
+environment = {}
+environment-pass = []
+build-verbosity = ""
+
+before-all = ""
+before-build = "rm -rf build"
+repair-wheel-command = ""
+
+test-command = ""
+before-test = ""
+test-requires = []
+test-extras = []
+
+container-engine = "docker"
+
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+manylinux-ppc64le-image = "manylinux_2_28"
+manylinux-s390x-image = "manylinux_2_28"
+manylinux-pypy_x86_64-image = "manylinux_2_28"
+manylinux-pypy_aarch64-image = "manylinux_2_28"
+
+musllinux-x86_64-image = "musllinux_1_1"
+musllinux-aarch64-image = "musllinux_1_1"
+musllinux-ppc64le-image = "musllinux_1_1"
+musllinux-s390x-image = "musllinux_1_1"
+
+[tool.cibuildwheel.linux]
+before-all = """
+dnf install -y perl-IPC-Cmd zip libXinerama-devel libXcursor-devel xorg-x11-server-devel mesa-libGLU-devel pkgconfig wayland-devel libxkbcommon-devel libXrandr-devel libXi-devel libXxf86vm-devel mesa-libGL-devel git python3-devel && \
+git clone https://github.com/Microsoft/vcpkg.git .vcpkg && \
+./.vcpkg/bootstrap-vcpkg.sh && \
+./.vcpkg/vcpkg integrate install
+"""
+
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
+
+environment = { VCPKG_ROOT = "/project/.vcpkg"}
+
+[tool.cibuildwheel.macos]
+repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+
+[tool.cibuildwheel.windows]

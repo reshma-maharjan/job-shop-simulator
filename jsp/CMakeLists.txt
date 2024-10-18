@@ -10,22 +10,33 @@ find_package(glfw3 REQUIRED)
 find_package(CURL REQUIRED)
 find_package(fmt REQUIRED)
 
+
+
+
+
+
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+
 # Check if nanobind_DIR is set
 if(DEFINED nanobind_DIR)
     list(APPEND CMAKE_MODULE_PATH "${nanobind_DIR}")
     message(STATUS "nanobind_DIR is set to: ${nanobind_DIR}")
 else()
     message(WARNING "nanobind_DIR is not set")
+    # site-packages/nanobind/cmake
+    list(APPEND CMAKE_MODULE_PATH "${Python_SITEARCH}/nanobind/cmake")
+
+
+    get_cmake_property(_variableNames VARIABLES)
+    list (SORT _variableNames)
+    foreach (_variableName ${_variableNames})
+        message(STATUS "${_variableName}=${${_variableName}}")
+    endforeach()
+    message( "${Python_SITEARCH}/nanobind/cmake")
 endif()
 
 # Try to find nanobind
-find_package(Python COMPONENTS Interpreter Development REQUIRED)
-
-# print path to Python executable
-message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
-set(nanobind_DIR "${Python_SITELIB}/nanobind/cmake")
 find_package(nanobind CONFIG REQUIRED)
-
 if(NOT nanobind_FOUND)
     message(FATAL_ERROR "nanobind not found. Please set nanobind_DIR to the directory containing nanobind-config.cmake")
 endif()
@@ -71,8 +82,8 @@ if(NOT DEFINED BUILD_EXECUTABLE OR BUILD_EXECUTABLE)
 endif()
 
 # Create the Python module
-nanobind_add_module(jobshop bindings/jobshop_bindings.cpp ${SOURCES} ${HEADERS})
-target_include_directories(jobshop PRIVATE include)
+nanobind_add_module(jobshop bindings/jobshop_bindings.cpp bindings/multi_dim_array_bind.cpp ${SOURCES} ${HEADERS})
+target_include_directories(jobshop PRIVATE include ${Python_INCLUDE_DIRS})
 target_link_libraries(jobshop PRIVATE
         ${OPENGL_LIBRARIES}
         GLEW::GLEW
@@ -80,6 +91,7 @@ target_link_libraries(jobshop PRIVATE
         ${CURL_LIBRARIES}
         fmt::fmt
         imgui::imgui
+        ${Python_LIBRARIES}
 )
 
 # Installation

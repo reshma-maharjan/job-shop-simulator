@@ -23,7 +23,9 @@
           "type": "FILEPATH"
         }
       },
-      "environment": {}
+      "environment": {
+
+      }
     },
     {
       "name": "debug",
@@ -63,7 +65,22 @@
         "CMAKE_CXX_FLAGS": "-O3 -DNDEBUG -march=native -flto -ffast-math -fno-omit-frame-pointer",
         "BUILD_EXECUTABLE": "OFF"
       }
+    },
+    {
+      "name": "debug-dev",
+      "inherits": "debug",
+      "displayName": "Debug Dev",
+      "cacheVariables": {
+        "nanobind_DIR": "../venv/lib/python3.12/site-packages/nanobind/cmake"
+      },
+      "environment": {
+        "VCPKG_ROOT": "../vcpkg"
+      }
+
     }
+
+
+
   ],
   "workflowPresets": []
 }
