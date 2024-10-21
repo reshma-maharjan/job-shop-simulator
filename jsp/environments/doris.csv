@@ -1,13 +1,11 @@
 [METADATA]
-# This section contains metadata about the job shop problem
-num_jobs: 36
-num_machines: 3
+num_jobs:36
+num_machines:3
 [METADATA END]
 
 [JOB DEPENDENCIES]
 # Only jobs with dependencies are listed
 # Format: jobIndex: depJobIndex1, depJobIndex2, ...
-
 1:0
 2:10
 3:10

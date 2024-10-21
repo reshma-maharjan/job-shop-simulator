@@ -14,6 +14,7 @@
 #include "job_shop_plotter.h"
 #include "job_shop_algorithms.h"
 #include <multidimensional_array.hpp>
+#include <job_shop_manual_generator.h>
 
 namespace nb = nanobind;
 
@@ -279,6 +280,9 @@ NB_MODULE(jobshop, m) {
         .def_static("verifyJobsData", &TaillardJobShopGenerator::verifyJobsData)
         .def_static("verifyOptimalSolution", &TaillardJobShopGenerator::verifyOptimalSolution)
         .def_static("runAllVerifications", &TaillardJobShopGenerator::runAllVerifications);
+
+    nb::class_<ManualJobShopGenerator>(m, "ManualJobShopGenerator")
+        .def_static("generateFromFile", &ManualJobShopGenerator::generateFromFile);
 
     // Bind LivePlotter class
     nb::class_<LivePlotter>(m, "LivePlotter")

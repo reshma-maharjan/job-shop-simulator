@@ -52,7 +52,7 @@ ENV PATH="/home/$USERNAME/.venv/bin:$PATH"
 
 # Install nanobind
 RUN pip3 install --upgrade pip && \
-    pip3 install nanobind==1.9.2
+    pip3 install nanobind==2.2.0
 
 
 # Install latest cmake

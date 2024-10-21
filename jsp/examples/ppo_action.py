@@ -243,8 +243,10 @@ class MakespanCallback(BaseCallback):
 def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, max_steps: int,
                    observation_space: str, reward_function: str) -> None:
     def make_env() -> Callable[[], gym.Env]:
-        instance: jobshop.TaillardInstance = getattr(jobshop.TaillardInstance, taillard_instance)
-        jobs, ta_optimal = jobshop.TaillardJobShopGenerator.loadProblem(instance, True)
+        #instance: jobshop.TaillardInstance = getattr(jobshop.TaillardInstance, taillard_instance)
+        jobs, ta_optimal = jobshop.ManualJobShopGenerator.generateFromFile("/workspaces/job-shop-simulator/jsp/environments/doris.csv")
+        print(jobs, ta_optimal)
+        #jobs, ta_optimal = jobshop.TaillardJobShopGenerator.loadProblem(instance, True)
         print(f"Optimal makespan for {taillard_instance}: {ta_optimal}")
 
         obs_space = DefaultObservationSpace() if observation_space == "default" else NormalizedObservationSpace()
@@ -269,10 +271,11 @@ def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, m
     print(f"Gap: {(makespan_callback.best_makespan - ta_optimal) / ta_optimal * 100:.2f}%")
 
 if __name__ == "__main__":
+    print(":D")
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description="Run Job Shop Scheduling experiment with PPO")
-    parser.add_argument("algorithm", choices=["PPO"], help="Algorithm type")
-    parser.add_argument("taillard_instance", choices=[f"TA{i:02d}" for i in range(1, 81)], help="Taillard instance")
-    parser.add_argument("--no-gui", action="store_true", help="Disable GUI")
+    parser.add_argument("--algorithm", choices=["PPO"],  default="PPO", help="Algorithm type")
+    parser.add_argument("--taillard_instance", default="TA01", choices=[f"TA{i:02d}" for i in range(1, 81)], help="Taillard instance")
+    parser.add_argument("--no-gui", action="store_false", help="Disable GUI")
     parser.add_argument("--max-steps", type=int, default=1000, help="Maximum number of steps per episode")
     parser.add_argument("--observation-space", choices=["default", "normalized"], default="normalized", help="Observation space type")
     parser.add_argument("--reward-function", choices=["makespan", "progress"], default="progress", help="Reward function type")

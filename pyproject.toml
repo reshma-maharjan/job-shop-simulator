@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel", "cmake>=3.30", "nanobind==1.9.2", "ninja"]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel", "cmake>=3.30", "nanobind==2.2.0", "ninja"]
 build-backend = "setuptools.build_meta"
 
 [project]
