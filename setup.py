@@ -83,11 +83,6 @@ class CMakeBuild(build_ext):
 setup(
     name="jobshop",
     author="Per-Arne Andersen",
-    use_scm_version={
-        "write_to": "jsp/_version.py",
-        "version_scheme": "jsp._version_scheme:version_scheme",
-    },
-    setup_requires=['setuptools_scm'],
     author_email="per@sysx.no",
     description="Job Shop Scheduling Algorithms",
     long_description=Path("README.md").read_text(),
