@@ -62,6 +62,10 @@ RUN mkdir /opt/cmake && \
     ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake && \
     rm /cmake-3.30.0-linux-x86_64.sh
 
+
+# set permissions of venv
+RUN chown -R $USERNAME:$USERNAME /home/$USERNAME/.venv
+
 USER $USERNAME
 
 RUN rm -rf /home/$USERNAME/.vcpkg && git clone https://github.com/microsoft/vcpkg.git /home/$USERNAME/.vcpkg && cd /home/$USERNAME/.vcpkg && ./bootstrap-vcpkg.sh
