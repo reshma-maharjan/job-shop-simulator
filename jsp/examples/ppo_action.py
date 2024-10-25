@@ -236,7 +236,7 @@ class MakespanCallback(BaseCallback):
         if self.best_schedule_data:
             print("\nBest Schedule:")
             jobshop_env = self.training_env.env_method("get_jobshop_env")[0]
-            jobshop_env.printSchedule(self.best_schedule_data)
+            jobshop_env.printSchedule()
         else:
             print("No best schedule data available.")
 
