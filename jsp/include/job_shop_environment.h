@@ -220,7 +220,9 @@ public:
     }
 
     [[nodiscard]] bool isDone() const {
-        return std::all_of(currentState->completedJobs.begin(), currentState->completedJobs.end(), [](bool completed) { return completed; });
+        return std::all_of(
+                currentState->completedJobs.begin(),
+                currentState->completedJobs.end(), [](bool completed) { return completed; });
     }
 
     [[nodiscard]] int getTotalTime() const { return totalTime; }

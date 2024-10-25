@@ -284,6 +284,9 @@ NB_MODULE(jobshop, m) {
     nb::class_<ManualJobShopGenerator>(m, "ManualJobShopGenerator")
         .def_static("generateFromFile", &ManualJobShopGenerator::generateFromFile);
 
+
+
+
     // Bind LivePlotter class
     nb::class_<LivePlotter>(m, "LivePlotter")
         .def(nb::init<int>())

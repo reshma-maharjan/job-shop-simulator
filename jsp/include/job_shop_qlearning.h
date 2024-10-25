@@ -80,9 +80,11 @@ private:
 
         double timeReward = -static_cast<double>(env.getTotalTime());
         double utilizationReward = 0;
+
         for (int machineAvailability : state.machineAvailability) {
             utilizationReward += static_cast<double>(machineAvailability) / env.getTotalTime();
         }
+
         double combinedReward = timeReward + utilizationReward;
 
         qTable(action.job, action.machine, action.operation) = (1 - learningRate) * currentQ + learningRate * (combinedReward + discountFactor * maxNextQ);

@@ -8,6 +8,7 @@
 #include <thread>
 #include <indicators/progress_bar.hpp>
 #include <indicators/multi_progress.hpp>
+#include <spdlog/spdlog.h>
 #include "job_shop_ppo.h"
 
 struct UpdateData {
@@ -40,10 +41,10 @@ void runExperiments(int n_threads, bool use_gui) {
     // Print the algorithm being run
     std::cout << "=== Running Algorithm: " << getAlgorithmName<Algorithm>() << " ===" << std::endl;
     // Load problem
-    auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA02);
+    //auto [jobs, ta01Optimal] = TaillardJobShopGenerator::loadProblem(TaillardInstance::TA02);
     //std::cout << "Optimal makespan for TA42: " << ta01Optimal << std::endl;
 
-    //auto [jobs, ta01Optimal] = ManualJobShopGenerator::generateFromFile("/home/per/jsp/jsp/environments/doris.csv");
+    auto [jobs, ta01Optimal] = ManualJobShopGenerator::generateFromFile("/home/per/jsp/jsp/environments/doris.csv");
 
     // Create environments and agents
     std::vector<std::unique_ptr<JobShopEnvironment>> environments;
@@ -195,6 +196,7 @@ void runExperiments(int n_threads, bool use_gui) {
 }
 
 int main(int argc, char* argv[]) {
+    spdlog::set_level(spdlog::level::debug);
     // Updated argv with proper types
     //const char* args[] = {"program_name", "qlearning", "--no-gui"}; 
     const char* args[] = {"program_name", "qlearning", "--no-gui"};
