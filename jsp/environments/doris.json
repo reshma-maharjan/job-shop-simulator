@@ -1,0 +1,228 @@
+{
+  "metadata": {
+    "numJobs": 36,
+    "numMachines": 3
+  },
+  "jobs": [
+    {
+      "id": 0,
+      "duration": 49,
+      "machine": 0,
+      "dependencies": []
+    },
+    {
+      "id": 1,
+      "duration": 64,
+      "machine": 1,
+      "dependencies": [0]
+    },
+    {
+      "id": 2,
+      "duration": 36,
+      "machine": 2,
+      "dependencies": [10]
+    },
+    {
+      "id": 3,
+      "duration": 12,
+      "machine": 0,
+      "dependencies": [10]
+    },
+    {
+      "id": 4,
+      "duration": 210,
+      "machine": 1,
+      "dependencies": [10]
+    },
+    {
+      "id": 5,
+      "duration": 24,
+      "machine": 2,
+      "dependencies": [10]
+    },
+    {
+      "id": 6,
+      "duration": 10,
+      "machine": 0,
+      "dependencies": [10]
+    },
+    {
+      "id": 7,
+      "duration": 1,
+      "machine": 1,
+      "dependencies": [4]
+    },
+    {
+      "id": 8,
+      "duration": 24,
+      "machine": 2,
+      "dependencies": [4]
+    },
+    {
+      "id": 9,
+      "duration": 1,
+      "machine": 0,
+      "dependencies": [12, 13, 14]
+    },
+    {
+      "id": 10,
+      "duration": 24,
+      "machine": 1,
+      "dependencies": [0]
+    },
+    {
+      "id": 11,
+      "duration": 48,
+      "machine": 2,
+      "dependencies": [10]
+    },
+    {
+      "id": 12,
+      "duration": 60,
+      "machine": 0,
+      "dependencies": [11]
+    },
+    {
+      "id": 13,
+      "duration": 1,
+      "machine": 1,
+      "dependencies": [11]
+    },
+    {
+      "id": 14,
+      "duration": 1,
+      "machine": 2,
+      "dependencies": [11]
+    },
+    {
+      "id": 15,
+      "duration": 48,
+      "machine": 0,
+      "dependencies": [29]
+    },
+    {
+      "id": 16,
+      "duration": 50,
+      "machine": 1,
+      "dependencies": [7]
+    },
+    {
+      "id": 17,
+      "duration": 48,
+      "machine": 2,
+      "dependencies": [12, 13, 14]
+    },
+    {
+      "id": 18,
+      "duration": 24,
+      "machine": 0,
+      "dependencies": [17]
+    },
+    {
+      "id": 19,
+      "duration": 1,
+      "machine": 1,
+      "dependencies": [15]
+    },
+    {
+      "id": 20,
+      "duration": 1,
+      "machine": 2,
+      "dependencies": [15]
+    },
+    {
+      "id": 21,
+      "duration": 1,
+      "machine": 0,
+      "dependencies": [15]
+    },
+    {
+      "id": 22,
+      "duration": 48,
+      "machine": 1,
+      "dependencies": [12, 13, 14, 18, 29]
+    },
+    {
+      "id": 23,
+      "duration": 5,
+      "machine": 2,
+      "dependencies": [12, 13, 14, 22]
+    },
+    {
+      "id": 24,
+      "duration": 1,
+      "machine": 0,
+      "dependencies": [9]
+    },
+    {
+      "id": 25,
+      "duration": 10,
+      "machine": 1,
+      "dependencies": [9, 12, 13, 14]
+    },
+    {
+      "id": 26,
+      "duration": 72,
+      "machine": 2,
+      "dependencies": [31]
+    },
+    {
+      "id": 27,
+      "duration": 36,
+      "machine": 0,
+      "dependencies": [31]
+    },
+    {
+      "id": 28,
+      "duration": 24,
+      "machine": 1,
+      "dependencies": [7]
+    },
+    {
+      "id": 29,
+      "duration": 20,
+      "machine": 2,
+      "dependencies": [28]
+    },
+    {
+      "id": 30,
+      "duration": 10,
+      "machine": 0,
+      "dependencies": [23]
+    },
+    {
+      "id": 31,
+      "duration": 70,
+      "machine": 1,
+      "dependencies": [17]
+    },
+    {
+      "id": 32,
+      "duration": 10,
+      "machine": 2,
+      "dependencies": [4]
+    },
+    {
+      "id": 33,
+      "duration": 10,
+      "machine": 0,
+      "dependencies": [4]
+    },
+    {
+      "id": 34,
+      "duration": 10,
+      "machine": 1,
+      "dependencies": [12, 13, 14]
+    },
+    {
+      "id": 35,
+      "duration": 10,
+      "machine": 2,
+      "dependencies": [24]
+    }
+  ],
+  "operationDependencies": {
+    "comment": "Operation dependencies can be added here if needed",
+    "dependencies": []
+  }
+}

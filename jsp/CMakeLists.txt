@@ -50,15 +50,15 @@ set(SOURCES
 
 # Add header files
 set(HEADERS
-        include/job_shop_environment.h
-        include/job_shop_qlearning.h
-        include/job_shop_actor_critic.h
-        include/job_shop_algorithms.h
-        include/job_shop_generator.h
-        include/job_shop_plotter.h
-        include/job_shop_taillard_generator.h
-        include/multidimensional_array.hpp
-        include/util.h
+        include/environment/job_shop_environment.h
+        include/algorithms/job_shop_qlearning.h
+        include/algorithms/job_shop_actor_critic.h
+        include/algorithms/job_shop_algorithms.h
+        include/environment/job_shop_environment_generator.h
+        include/gui/job_shop_plotter.h
+        include/environment/job_shop_taillard_generator.h
+        include/utilities/multidimensional_array.hpp
+        include/utilities/util.h
 )
 
 # Create the main executable if not building for pip installation
@@ -82,7 +82,7 @@ if(NOT DEFINED BUILD_EXECUTABLE OR BUILD_EXECUTABLE)
 endif()
 
 # Create the Python module
-nanobind_add_module(jobshop bindings/jobshop_bindings.cpp bindings/multi_dim_array_bind.cpp ${SOURCES} ${HEADERS})
+nanobind_add_module(jobshop bindings/jobshop_bindings.cpp  ${SOURCES} ${HEADERS})
 target_include_directories(jobshop PRIVATE include ${Python_INCLUDE_DIRS})
 target_link_libraries(jobshop PRIVATE
         ${OPENGL_LIBRARIES}
