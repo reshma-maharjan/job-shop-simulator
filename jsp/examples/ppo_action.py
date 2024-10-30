@@ -231,6 +231,8 @@ class JobShopGymEnv(gym.Env):
     def action_masks(self) -> np.ndarray:
         return self._action_mask
 
+    def get_jobshop_env(self) -> jobshop.JobShopEnvironment:
+        return self.env
 
 class MakespanCallback(BaseCallback):
     def __init__(self, verbose: int = 0, plotter: Optional[jobshop.LivePlotter] = None):
@@ -313,8 +315,8 @@ def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, m
     model.learn(total_timesteps=total_timesteps, callback=makespan_callback)
 
     print(f"Best makespan achieved: {makespan_callback.best_makespan}")
-    print(f"Optimal makespan: {ta_optimal}")
-    print(f"Gap: {(makespan_callback.best_makespan - ta_optimal) / ta_optimal * 100:.2f}%")
+    #print(f"Optimal makespan: {ta_optimal}")
+    #print(f"Gap: {(makespan_callback.best_makespan - ta_optimal) / ta_optimal * 100:.2f}%")
 
 if __name__ == "__main__":
     print(":D")
