@@ -236,15 +236,18 @@ class MakespanCallback(BaseCallback):
         if self.best_schedule_data:
             print("\nBest Schedule:")
             jobshop_env = self.training_env.env_method("get_jobshop_env")[0]
-            jobshop_env.printSchedule(self.best_schedule_data)
+            jobshop_env.printSchedule()
         else:
             print("No best schedule data available.")
+      
 
 def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, max_steps: int,
                    observation_space: str, reward_function: str) -> None:
     def make_env() -> Callable[[], gym.Env]:
+    
         #instance: jobshop.TaillardInstance = getattr(jobshop.TaillardInstance, taillard_instance)
         jobs, ta_optimal = jobshop.ManualJobShopGenerator.generateFromFile("/workspaces/job-shop-simulator/jsp/environments/doris.csv")
+
         print(jobs, ta_optimal)
         #jobs, ta_optimal = jobshop.TaillardJobShopGenerator.loadProblem(instance, True)
         print(f"Optimal makespan for {taillard_instance}: {ta_optimal}")
@@ -267,8 +270,8 @@ def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, m
     model.learn(total_timesteps=total_timesteps, callback=makespan_callback)
 
     print(f"Best makespan achieved: {makespan_callback.best_makespan}")
-    print(f"Optimal makespan: {ta_optimal}")
-    print(f"Gap: {(makespan_callback.best_makespan - ta_optimal) / ta_optimal * 100:.2f}%")
+    #print(f"Optimal makespan: {ta_optimal}")
+    #print(f"Gap: {(makespan_callback.best_makespan - ta_optimal) / ta_optimal * 100:.2f}%")
 
 if __name__ == "__main__":
     print(":D")
