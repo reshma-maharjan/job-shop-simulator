@@ -90,16 +90,27 @@ class ProgressRewardFunction(RewardFunction):
     def __init__(self, completion_bonus: float = 1000):
         self.completion_bonus = completion_bonus
         self.last_progress = 0
+        self.utilization_weight = 0.5  # Match C++ utilization reward weight
 
     def calculate_reward(self, env: JobShopGymEnv, done: bool) -> float:
         state = env.env.getState()
         current_progress = sum(state.nextOperationForJob) / sum(len(job.operations) for job in env.env.getJobs())
+
+        # Match C++ reward calculation components
         progress_reward = (current_progress - self.last_progress) * 100
         self.last_progress = current_progress
 
+        # Add machine utilization component to match C++ implementation
+        total_time = env.env.getTotalTime()
+        if total_time > 0:
+            utilization_reward = sum(state.machineAvailability) / (total_time * len(state.machineAvailability))
+            utilization_reward *= self.utilization_weight
+        else:
+            utilization_reward = 0
+
         if done:
-            return progress_reward + self.completion_bonus - env.env.getTotalTime()
-        return progress_reward
+            return progress_reward + self.completion_bonus - total_time + utilization_reward
+        return progress_reward + utilization_reward
 
 class JobShopGymEnv(gym.Env):
     metadata: Dict[str, List[str]] = {'render.modes': ['human']}
@@ -119,21 +130,27 @@ class JobShopGymEnv(gym.Env):
         self.observation_space = self.observation_space_impl.get_observation_space(self)
         self.reward_function = reward_function
 
+        # Match C++ action indices calculation
         self.action_indices = np.array([
             [job * self.num_machines * self.max_operations + machine * self.max_operations
              for machine in range(self.num_machines)]
             for job in range(self.num_jobs)
         ])
 
+        # Match C++ environment state tracking
         self.action_map: Dict[int, jobshop.Action] = {}
         self.use_masking: bool = True
         self._action_mask: Optional[np.ndarray] = None
         self.max_steps: int = max_steps
         self.current_step: int = 0
+        self.best_time: float = float('inf')
+        self.best_schedule: List[jobshop.Action] = []
 
     def reset(self, **kwargs: Any) -> Tuple[np.ndarray, Dict[str, Any]]:
+        # Match C++ reset behavior
         self.env.reset()
         self.current_step = 0
+        self._action_mask = None
         obs: np.ndarray = self.observation_space_impl.get_observation(self)
         self._update_action_mask()
         return obs, {}
@@ -141,11 +158,17 @@ class JobShopGymEnv(gym.Env):
     def step(self, action_idx: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         self.current_step += 1
 
+        # Match C++ invalid action handling
         if self._action_mask[action_idx] == 0:
-            reward: float = -1
+            reward: float = -1  # Penalty for invalid action
             done: bool = self.current_step >= self.max_steps
             obs: np.ndarray = self.observation_space_impl.get_observation(self)
-            info: Dict[str, Any] = {'invalid_action': True, 'makespan': self.env.getTotalTime()}
+            info: Dict[str, Any] = {
+                'invalid_action': True,
+                'makespan': self.env.getTotalTime(),
+                'current_step': self.current_step,
+                'max_steps': self.max_steps
+            }
 
             if done:
                 info["schedule_data"] = self.env.getScheduleData()
@@ -153,12 +176,26 @@ class JobShopGymEnv(gym.Env):
 
             return obs, reward, done, False, info
 
+        # Match C++ action execution and state updates
         action: jobshop.Action = self.action_map[action_idx]
-        self.env.step(action)
+        state = self.env.step(action)
+
+        # Match C++ termination criteria
         done: bool = self.env.isDone() or self.current_step >= self.max_steps
         obs: np.ndarray = self.observation_space_impl.get_observation(self)
+
+        # Match C++ reward calculation
         makespan: int = self.env.getTotalTime()
-        info: Dict[str, Any] = {'makespan': makespan}
+        if makespan < self.best_time and self.env.isDone():
+            self.best_time = makespan
+            self.best_schedule = self.get_current_schedule()
+
+        info: Dict[str, Any] = {
+            'makespan': makespan,
+            'current_step': self.current_step,
+            'max_steps': self.max_steps
+        }
+
         if done:
             info["schedule_data"] = self.env.getScheduleData()
             info["isDone"] = self.env.isDone()
@@ -169,19 +206,30 @@ class JobShopGymEnv(gym.Env):
         return obs, reward, done, False, info
 
     def _update_action_mask(self) -> None:
+        # Match C++ action masking logic
         possible_actions: List[jobshop.Action] = self.env.getPossibleActions()
         self._action_mask = np.zeros(self.max_num_actions, dtype=np.int8)
         self.action_map.clear()
+
         for action in possible_actions:
             action_idx: int = self._action_to_index(action)
             self._action_mask[action_idx] = 1
             self.action_map[action_idx] = action
 
+    def _action_to_index(self, action: jobshop.Action) -> int:
+        # Match C++ action index calculation
+        return self.action_indices[action.job, action.machine] + action.operation
+
+    def get_current_schedule(self) -> List[jobshop.Action]:
+        # Match C++ schedule tracking
+        return self.env.getScheduleData()
+
+    def get_best_schedule(self) -> Tuple[List[jobshop.Action], float]:
+        # Match C++ best schedule tracking
+        return self.best_schedule, self.best_time
+
     def action_masks(self) -> np.ndarray:
         return self._action_mask
-
-    def _action_to_index(self, action: jobshop.Action) -> int:
-        return self.action_indices[action.job, action.machine] + action.operation
 
     def get_jobshop_env(self) -> jobshop.JobShopEnvironment:
         return self.env
@@ -246,8 +294,12 @@ def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, m
     def make_env() -> Callable[[], gym.Env]:
     
         #instance: jobshop.TaillardInstance = getattr(jobshop.TaillardInstance, taillard_instance)
+<<<<<<< HEAD
         jobs, ta_optimal = jobshop.ManualJobShopGenerator.generateFromFile("/workspaces/job-shop-simulator/jsp/environments/doris.csv")
 
+=======
+        jobs, ta_optimal = jobshop.ManualJobShopGenerator.generateFromFile("/home/per/jsp/jsp/environments/doris.json")
+>>>>>>> upstream/main
         print(jobs, ta_optimal)
         #jobs, ta_optimal = jobshop.TaillardJobShopGenerator.loadProblem(instance, True)
         print(f"Optimal makespan for {taillard_instance}: {ta_optimal}")

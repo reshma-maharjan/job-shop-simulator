@@ -36,5 +36,7 @@ if __name__ == "__main__":
     parser.add_argument("algorithm", choices=["QLearning", "ActorCritic"], help="Algorithm type")
     parser.add_argument("taillard_instance", choices=[f"TA{i:02d}" for i in range(1, 81)], help="Taillard instance")
     args = parser.parse_args()
+    
+    print(":D")
 
     run_experiment(args.algorithm, args.taillard_instance)

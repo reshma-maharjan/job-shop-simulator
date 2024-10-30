@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "multidimensional_array.hpp"
+#include "utilities/multidimensional_array.hpp"
 #include <functional>
 
 class MultiDimensionalArrayTest : public ::testing::Test {
