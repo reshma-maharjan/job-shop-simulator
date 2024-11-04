@@ -9,7 +9,7 @@ find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(CURL REQUIRED)
 find_package(fmt REQUIRED)
-
+find_package(nlohmann_json CONFIG REQUIRED)
 
 
 
@@ -92,6 +92,7 @@ target_link_libraries(jobshop PRIVATE
         fmt::fmt
         imgui::imgui
         ${Python_LIBRARIES}
+        nlohmann_json::nlohmann_json
 )
 
 # Installation

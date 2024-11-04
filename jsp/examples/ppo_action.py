@@ -1,238 +1,15 @@
 from __future__ import annotations
-
 import argparse
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple, Optional, Callable
-
+from typing import List, Optional, Callable
 import jobshop
-import numpy as np
 import gymnasium as gym
-from gymnasium import spaces
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-class ObservationSpace(ABC):
-    @abstractmethod
-    def get_observation_space(self, env: JobShopGymEnv) -> spaces.Space:
-        pass
+from jsp.jsp_env import DefaultObservationSpace, MakespanRewardFunction, JobShopGymEnv, NormalizedObservationSpace, \
+    ProgressRewardFunction
 
-    @abstractmethod
-    def get_observation(self, env: JobShopGymEnv) -> np.ndarray:
-        pass
-
-class DefaultObservationSpace(ObservationSpace):
-    def get_observation_space(self, env: JobShopGymEnv) -> spaces.Space:
-        num_jobs = len(env.env.getJobs())
-        num_machines = env.env.getNumMachines()
-        max_operations = max(len(job.operations) for job in env.env.getJobs())
-
-        low = np.zeros(num_jobs * max_operations + num_jobs * 3 + num_machines)
-        high = np.inf * np.ones(num_jobs * max_operations + num_jobs * 3 + num_machines)
-
-        return spaces.Box(low=low, high=high, dtype=np.float32)
-
-    def get_observation(self, env: JobShopGymEnv) -> np.ndarray:
-        state: jobshop.JobShopState = env.env.getState()
-        job_progress = np.array(state.jobProgress, copy=False).flatten()
-        completed_jobs = np.array(state.completedJobs, dtype=np.float32)
-        job_start_times = np.array(state.jobStartTimes, dtype=np.float32)
-        machine_availability = np.array(state.machineAvailability, dtype=np.float32)
-        next_operation_for_job = np.array(state.nextOperationForJob, dtype=np.float32)
-
-        return np.concatenate([
-            job_progress,
-            completed_jobs,
-            job_start_times,
-            machine_availability,
-            next_operation_for_job
-        ])
-
-class NormalizedObservationSpace(ObservationSpace):
-    def get_observation_space(self, env: JobShopGymEnv) -> spaces.Space:
-        num_jobs = len(env.env.getJobs())
-        num_machines = env.env.getNumMachines()
-        max_operations = max(len(job.operations) for job in env.env.getJobs())
-
-        return spaces.Box(low=0, high=1, shape=(num_jobs * max_operations + num_jobs * 3 + num_machines,), dtype=np.float32)
-
-    def get_observation(self, env: JobShopGymEnv) -> np.ndarray:
-        state: jobshop.JobShopState = env.env.getState()
-        total_time = env.env.getTotalTime()
-        max_time = sum(op.duration for job in env.env.getJobs() for op in job.operations)
-
-        job_progress = np.array(state.jobProgress, copy=False).flatten() / max_time
-        completed_jobs = np.array(state.completedJobs, dtype=np.float32)
-        job_start_times = np.array(state.jobStartTimes, dtype=np.float32) / max_time
-        machine_availability = np.array(state.machineAvailability, dtype=np.float32) / max_time
-        next_operation_for_job = np.array(state.nextOperationForJob, dtype=np.float32) / max(len(job.operations) for job in env.env.getJobs())
-
-        return np.concatenate([
-            job_progress,
-            completed_jobs,
-            job_start_times,
-            machine_availability,
-            next_operation_for_job
-        ])
-
-class RewardFunction(ABC):
-    @abstractmethod
-    def calculate_reward(self, env: JobShopGymEnv, done: bool) -> float:
-        pass
-
-class MakespanRewardFunction(RewardFunction):
-    def calculate_reward(self, env: JobShopGymEnv, done: bool) -> float:
-        if done:
-            return -env.env.getTotalTime()
-        return 0
-
-class ProgressRewardFunction(RewardFunction):
-    def __init__(self, completion_bonus: float = 1000):
-        self.completion_bonus = completion_bonus
-        self.last_progress = 0
-        self.utilization_weight = 0.5  # Match C++ utilization reward weight
-
-    def calculate_reward(self, env: JobShopGymEnv, done: bool) -> float:
-        state = env.env.getState()
-        current_progress = sum(state.nextOperationForJob) / sum(len(job.operations) for job in env.env.getJobs())
-
-        # Match C++ reward calculation components
-        progress_reward = (current_progress - self.last_progress) * 100
-        self.last_progress = current_progress
-
-        # Add machine utilization component to match C++ implementation
-        total_time = env.env.getTotalTime()
-        if total_time > 0:
-            utilization_reward = sum(state.machineAvailability) / (total_time * len(state.machineAvailability))
-            utilization_reward *= self.utilization_weight
-        else:
-            utilization_reward = 0
-
-        if done:
-            return progress_reward + self.completion_bonus - total_time + utilization_reward
-        return progress_reward + utilization_reward
-
-class JobShopGymEnv(gym.Env):
-    metadata: Dict[str, List[str]] = {'render.modes': ['human']}
-
-    def __init__(self, jobshop_env: jobshop.JobShopEnvironment, max_steps: int = 200,
-                 observation_space: ObservationSpace = DefaultObservationSpace(),
-                 reward_function: RewardFunction = MakespanRewardFunction()):
-        super().__init__()
-        self.env: jobshop.JobShopEnvironment = jobshop_env
-        self.num_jobs: int = len(self.env.getJobs())
-        self.num_machines: int = self.env.getNumMachines()
-        self.max_operations: int = max(len(job.operations) for job in self.env.getJobs())
-        self.max_num_actions: int = self.num_jobs * self.num_machines * self.max_operations
-        self.action_space: spaces.Discrete = spaces.Discrete(self.max_num_actions)
-
-        self.observation_space_impl = observation_space
-        self.observation_space = self.observation_space_impl.get_observation_space(self)
-        self.reward_function = reward_function
-
-        # Match C++ action indices calculation
-        self.action_indices = np.array([
-            [job * self.num_machines * self.max_operations + machine * self.max_operations
-             for machine in range(self.num_machines)]
-            for job in range(self.num_jobs)
-        ])
-
-        # Match C++ environment state tracking
-        self.action_map: Dict[int, jobshop.Action] = {}
-        self.use_masking: bool = True
-        self._action_mask: Optional[np.ndarray] = None
-        self.max_steps: int = max_steps
-        self.current_step: int = 0
-        self.best_time: float = float('inf')
-        self.best_schedule: List[jobshop.Action] = []
-
-    def reset(self, **kwargs: Any) -> Tuple[np.ndarray, Dict[str, Any]]:
-        # Match C++ reset behavior
-        self.env.reset()
-        self.current_step = 0
-        self._action_mask = None
-        obs: np.ndarray = self.observation_space_impl.get_observation(self)
-        self._update_action_mask()
-        return obs, {}
-
-    def step(self, action_idx: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        self.current_step += 1
-
-        # Match C++ invalid action handling
-        if self._action_mask[action_idx] == 0:
-            reward: float = -1  # Penalty for invalid action
-            done: bool = self.current_step >= self.max_steps
-            obs: np.ndarray = self.observation_space_impl.get_observation(self)
-            info: Dict[str, Any] = {
-                'invalid_action': True,
-                'makespan': self.env.getTotalTime(),
-                'current_step': self.current_step,
-                'max_steps': self.max_steps
-            }
-
-            if done:
-                info["schedule_data"] = self.env.getScheduleData()
-                info["isDone"] = True
-
-            return obs, reward, done, False, info
-
-        # Match C++ action execution and state updates
-        action: jobshop.Action = self.action_map[action_idx]
-        state = self.env.step(action)
-
-        # Match C++ termination criteria
-        done: bool = self.env.isDone() or self.current_step >= self.max_steps
-        obs: np.ndarray = self.observation_space_impl.get_observation(self)
-
-        # Match C++ reward calculation
-        makespan: int = self.env.getTotalTime()
-        if makespan < self.best_time and self.env.isDone():
-            self.best_time = makespan
-            self.best_schedule = self.get_current_schedule()
-
-        info: Dict[str, Any] = {
-            'makespan': makespan,
-            'current_step': self.current_step,
-            'max_steps': self.max_steps
-        }
-
-        if done:
-            info["schedule_data"] = self.env.getScheduleData()
-            info["isDone"] = self.env.isDone()
-
-        reward: float = self.reward_function.calculate_reward(self, done)
-        self._update_action_mask()
-
-        return obs, reward, done, False, info
-
-    def _update_action_mask(self) -> None:
-        # Match C++ action masking logic
-        possible_actions: List[jobshop.Action] = self.env.getPossibleActions()
-        self._action_mask = np.zeros(self.max_num_actions, dtype=np.int8)
-        self.action_map.clear()
-
-        for action in possible_actions:
-            action_idx: int = self._action_to_index(action)
-            self._action_mask[action_idx] = 1
-            self.action_map[action_idx] = action
-
-    def _action_to_index(self, action: jobshop.Action) -> int:
-        # Match C++ action index calculation
-        return self.action_indices[action.job, action.machine] + action.operation
-
-    def get_current_schedule(self) -> List[jobshop.Action]:
-        # Match C++ schedule tracking
-        return self.env.getScheduleData()
-
-    def get_best_schedule(self) -> Tuple[List[jobshop.Action], float]:
-        # Match C++ best schedule tracking
-        return self.best_schedule, self.best_time
-
-    def action_masks(self) -> np.ndarray:
-        return self._action_mask
-
-    def get_jobshop_env(self) -> jobshop.JobShopEnvironment:
-        return self.env
 
 class MakespanCallback(BaseCallback):
     def __init__(self, verbose: int = 0, plotter: Optional[jobshop.LivePlotter] = None):
@@ -288,6 +65,7 @@ class MakespanCallback(BaseCallback):
         else:
             print("No best schedule data available.")
 
+
 def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, max_steps: int,
                    observation_space: str, reward_function: str) -> None:
     def make_env() -> Callable[[], gym.Env]:
@@ -318,15 +96,18 @@ def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, m
     #print(f"Optimal makespan: {ta_optimal}")
     #print(f"Gap: {(makespan_callback.best_makespan - ta_optimal) / ta_optimal * 100:.2f}%")
 
+
 if __name__ == "__main__":
-    print(":D")
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description="Run Job Shop Scheduling experiment with PPO")
-    parser.add_argument("--algorithm", choices=["PPO"],  default="PPO", help="Algorithm type")
-    parser.add_argument("--taillard_instance", default="TA01", choices=[f"TA{i:02d}" for i in range(1, 81)], help="Taillard instance")
+    parser.add_argument("--algorithm", choices=["PPO"], default="PPO", help="Algorithm type")
+    parser.add_argument("--taillard_instance", default="TA01", choices=[f"TA{i:02d}" for i in range(1, 81)],
+                        help="Taillard instance")
     parser.add_argument("--no-gui", action="store_false", help="Disable GUI")
     parser.add_argument("--max-steps", type=int, default=1000, help="Maximum number of steps per episode")
-    parser.add_argument("--observation-space", choices=["default", "normalized"], default="normalized", help="Observation space type")
-    parser.add_argument("--reward-function", choices=["makespan", "progress"], default="progress", help="Reward function type")
+    parser.add_argument("--observation-space", choices=["default", "normalized"], default="normalized",
+                        help="Observation space type")
+    parser.add_argument("--reward-function", choices=["makespan", "progress"], default="progress",
+                        help="Reward function type")
     args: argparse.Namespace = parser.parse_args()
 
     run_experiment(args.algorithm, args.taillard_instance, not args.no_gui, args.max_steps,

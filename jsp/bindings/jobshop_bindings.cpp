@@ -8,8 +8,6 @@
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/array.h>
 #include <nanobind/stl/optional.h>
-#include <nanobind/stl/unique_ptr.h>
-#include <nanobind/stl/shared_ptr.h>
 #include <optional>
 #include "environment/job_shop_environment.h"
 #include "algorithms/job_shop_qlearning.h"
@@ -91,7 +89,15 @@ NB_MODULE(jobshop, m) {
                 op.machine = nb::cast<int>(state[1]);
                 op.eligibleMachines = std::bitset<MAX_MACHINES>(nb::cast<std::string>(state[2]));  // Convert string back to bitset
                 op.dependentOperations = nb::cast<std::vector<std::pair<int, int>>>(state[3]);
+            })
+            .def("isEligible", [](const Operation& op, int machine) {
+                return op.eligibleMachines[machine];
+            })
+            .def("setEligible", [](Operation& op, int machine, bool eligible) {
+                op.eligibleMachines[machine] = eligible;
             });
+
+
 
     // Bind Job struct
     nb::class_<Job>(m, "Job")
@@ -128,23 +134,32 @@ NB_MODULE(jobshop, m) {
             .def_rw("completedJobs", &State::completedJobs)
             .def_rw("jobStartTimes", &State::jobStartTimes);
 
+
+
     // Bind ScheduleEntry struct
     nb::class_<ScheduleEntry>(m, "ScheduleEntry")
             .def(nb::init<>())
-            .def(nb::init<int, int, int, int>(), nb::arg("job"), nb::arg("operation"), nb::arg("start"), nb::arg("duration"))
+            .def(nb::init<int, int, int, int, int>(),
+                 nb::arg("job"),
+                 nb::arg("operation"),
+                 nb::arg("machine"),
+                 nb::arg("start"),
+                 nb::arg("duration"))
             .def_rw("job", &ScheduleEntry::job)
             .def_rw("operation", &ScheduleEntry::operation)
+            .def_rw("machine", &ScheduleEntry::machine)
             .def_rw("start", &ScheduleEntry::start)
             .def_rw("duration", &ScheduleEntry::duration)
             .def("__getstate__", [](const ScheduleEntry &se) {
-                return std::make_tuple(se.job, se.operation, se.start, se.duration);
+                return std::make_tuple(se.job, se.operation, se.machine, se.start, se.duration);
             })
-            .def("__setstate__", [](ScheduleEntry &se, const std::tuple<int, int, int, int> &state) {
+            .def("__setstate__", [](ScheduleEntry &se, const std::tuple<int, int, int, int, int> &state) {
                 new (&se) ScheduleEntry{
-                        std::get<0>(state),
-                        std::get<1>(state),
-                        std::get<2>(state),
-                        std::get<3>(state)
+                        std::get<0>(state),  // job
+                        std::get<1>(state),  // operation
+                        std::get<2>(state),  // machine
+                        std::get<3>(state),  // start
+                        std::get<4>(state)   // duration
                 };
             });
 

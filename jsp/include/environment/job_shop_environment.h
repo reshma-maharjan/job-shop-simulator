@@ -90,6 +90,7 @@ public:
 struct ScheduleEntry {
     int job;
     int operation;
+    int machine;
     int start;
     int duration;
 };
@@ -279,6 +280,7 @@ public:
             scheduleData[action.machine].push_back({
                                                            action.job,
                                                            action.operation,
+                                                           action.machine,
                                                            end - op.duration,
                                                            op.duration
                                                    });
@@ -294,8 +296,10 @@ public:
             for (const auto& entry : scheduleData[i]) {
                 std::cout << "(Job " << entry.job
                           << ", Op " << entry.operation
+                          << ", Machine " << entry.machine  // Added machine
                           << ", Start: " << entry.start
-                          << ", Duration: " << entry.duration << ") ";
+                          << ", Duration: " << entry.duration
+                          << ") ";
             }
             std::cout << '\n';
         }
