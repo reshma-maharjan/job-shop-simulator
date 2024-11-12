@@ -8,6 +8,7 @@ requires = [
     "ninja",
     "tomli>=2.0.0"
 ]
+optional-dependencies = ["cpp"]
 build-backend = "setuptools.build_meta"
 
 [project]
