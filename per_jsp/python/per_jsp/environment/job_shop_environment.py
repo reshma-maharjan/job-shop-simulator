@@ -1,10 +1,9 @@
 import numpy as np
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Set, Optional
+from typing import List, Tuple, Dict, Set
 import json
 import logging
 import time
-from pathlib import Path
 from collections import defaultdict
 
 # Configure logging

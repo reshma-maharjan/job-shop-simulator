@@ -53,7 +53,7 @@ void bind_multi_dim_array(nb::module_ &m, const char* name) {
             .def("fill", &MultiDimensionalArray<T, NDim>::fill);
 }
 
-NB_MODULE(jobshop, m) {
+NB_MODULE(per_jspp, m) {
 
     bind_multi_dim_array<float, 1>(m, "MultiDimArray1f");
     bind_multi_dim_array<float, 2>(m, "MultiDimArray2f");

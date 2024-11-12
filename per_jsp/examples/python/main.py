@@ -12,22 +12,21 @@ import random
 import numpy as np
 from typing import List, Tuple, Any, Dict, Optional
 
-from job_shop_environment import (
+from per_jsp.environment.job_shop_environment import (
     JobShopEnvironment,
     Action,
     ScheduleEntry,
     Job,
-    Operation
 )
-from job_shop_taillard_generator import TaillardJobShopGenerator
-from job_shop_manual_generator import ManualJobShopGenerator
-from job_shop_automatic_generator import AutomaticJobShopGenerator
-from structs import GenerationParams
+from per_jsp.environment.job_shop_taillard_generator import TaillardJobShopGenerator
+from per_jsp.environment.job_shop_manual_generator import ManualJobShopGenerator
+from per_jsp.environment.job_shop_automatic_generator import AutomaticJobShopGenerator
+from per_jsp.environment.structs import GenerationParams
 
 # Import algorithms
-from algorithms.base import BaseScheduler
-from algorithms.greedy import GreedyScheduler
-from algorithms.q_learning import QLearningScheduler
+from per_jsp.algorithms.base import BaseScheduler
+from per_jsp.algorithms.greedy import GreedyScheduler
+from per_jsp.algorithms.q_learning import QLearningScheduler
 
 # Configure logging
 logging.basicConfig(

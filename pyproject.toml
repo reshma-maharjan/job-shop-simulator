@@ -1,11 +1,19 @@
 [build-system]
-requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel", "cmake>=3.30", "nanobind==2.2.0", "ninja"]
+requires = [
+    "setuptools>=45",
+    "setuptools_scm[toml]>=6.2",
+    "wheel",
+    "cmake>=3.30",
+    "nanobind==2.2.0",
+    "ninja",
+    "tomli>=2.0.0"
+]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "jobshop"
+name = "per_jsp"
 dynamic = ["version"]
-description = "Job Shop Scheduling Algorithms"
+description = "Performant Job Shop Scheduling Algorithms"
 authors = [{name = "Per-Arne Andersen", email = "per@sysx.no"}]
 license = {file = "LICENSE"}
 readme = "README.md"
@@ -14,17 +22,85 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/cair/jobshop"
 "Bug Tracker" = "https://github.com/cair/jobshop/issues"
+"Documentation" = "https://github.com/cair/jobshop/wiki"
 
 [tool.setuptools]
-packages = ["jsp"]
+packages = ["per_jsp", "per_jsp.algorithms", "per_jsp.cpp", "per_jsp.environment"]
+package-dir = {"" = "per_jsp/python"}
+
+[tool.setuptools.package-data]
+per_jsp = ["*.so", "*.pyd", "*.dylib"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.vcpkg]
+repository = "https://github.com/Microsoft/vcpkg.git"
+revision = "c4467cb686f92671f0172aa8299a77d908175b4e"
+manifest = "per_jsp/cpp/vcpkg.json"
+[tool.vcpkg.packages]
+common = [
+    "spdlog",
+    "nlohmann-json",
+    "stb",
+    "effolkronium-random",
+    "indicators",
+    "curl"
+]
+windows = [
+    "imgui[glfw-binding,opengl3-binding]:x64-windows",
+    "glew:x64-windows"
+]
+linux = [
+    "imgui[glfw-binding,opengl3-binding]:x64-linux",
+    "glew:x64-linux"
+]
+macos = [
+    "imgui[glfw-binding,opengl3-binding]:x64-osx",
+    "glew:x64-osx"
+]
+
+[tool.vcpkg.versions]
+spdlog = "1.12.0"
+imgui = "1.90.7"
+glew = "2.2.0#3"
+curl = "8.8.0#3"
+effolkronium-random = "1.5.0"
+indicators = "2.3"
+nlohmann-json = "3.11.3#1"
+stb = "2024-07-29#1"
+
+
+[tool.cmake]
+target = "per_jspp"
+source_dir = "per_jsp/cpp"
+build_type = "Release"
+use_ninja = true
+use_preset = false
+preset_name = "pip-install"
+
+
+[tool.cmake.windows]
+generator_platform = "x64"
+
+[tool.cmake.macos]
+deployment_target = "10.15"
+architectures = ["arm64", "x86_64"]
+
+
 
 [tool.cibuildwheel]
 build = "*"
@@ -32,71 +108,68 @@ test-skip = ""
 skip = [
     "pp*",
     "*i686*",
-    "cp38-*",  # Skip Python 3.8
-    "cp39-*",  # Skip Python 3.9
-    "cp310-*",  # Skip Python 3.10
-    #"cp*-manylinux_x86_64",
+    "cp38-*",
+    "cp39-*",
+    "cp310-*",
     "cp*-manylinux_i686",
-    #"cp*-manylinux_aarch64",
     "cp*-manylinux_ppc64le",
     "cp*-manylinux_s390x",
     "cp*-manylinux_pypy_*_x86_64",
     "cp*-manylinux_pypy_*_aarch64",
     "cp*-win32",
-    #"cp*-win_amd64",
     "cp*-linux_x86_64",
-    #"cp*-macosx_x86_64",
-    #"cp*-macosx_arm64",
     "cp*-musllinux_x86_64",
     "cp*-musllinux_aarch64",
     "cp*-musllinux_ppc64le",
     "cp*-musllinux_s390x",
 ]
-
 archs = ["auto"]
 build-frontend = "build"
 config-settings = {}
 dependency-versions = "pinned"
 environment = {}
 environment-pass = []
-build-verbosity = ""
-
-before-all = ""
+build-verbosity = "1"
 before-build = "rm -rf build"
-repair-wheel-command = ""
-
-test-command = ""
-before-test = ""
-test-requires = []
-test-extras = []
-
-container-engine = "docker"
-
-manylinux-x86_64-image = "manylinux_2_28"
-manylinux-aarch64-image = "manylinux_2_28"
-manylinux-ppc64le-image = "manylinux_2_28"
-manylinux-s390x-image = "manylinux_2_28"
-manylinux-pypy_x86_64-image = "manylinux_2_28"
-manylinux-pypy_aarch64-image = "manylinux_2_28"
-
-musllinux-x86_64-image = "musllinux_1_1"
-musllinux-aarch64-image = "musllinux_1_1"
-musllinux-ppc64le-image = "musllinux_1_1"
-musllinux-s390x-image = "musllinux_1_1"
 
 [tool.cibuildwheel.linux]
 before-all = """
-dnf install -y perl-IPC-Cmd zip libXinerama-devel libXcursor-devel xorg-x11-server-devel mesa-libGLU-devel pkgconfig wayland-devel libxkbcommon-devel libXrandr-devel libXi-devel libXxf86vm-devel mesa-libGL-devel git python3-devel && \
+dnf install -y \
+    perl-IPC-Cmd \
+    zip \
+    libXinerama-devel \
+    libXcursor-devel \
+    xorg-x11-server-devel \
+    mesa-libGLU-devel \
+    pkgconfig \
+    wayland-devel \
+    libxkbcommon-devel \
+    libXrandr-devel \
+    libXi-devel \
+    libXxf86vm-devel \
+    mesa-libGL-devel \
+    git \
+    python3-devel && \
 git clone https://github.com/Microsoft/vcpkg.git .vcpkg && \
 ./.vcpkg/bootstrap-vcpkg.sh && \
 ./.vcpkg/vcpkg integrate install
 """
-
 repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
-
 environment = { VCPKG_ROOT = "/project/.vcpkg"}
 
 [tool.cibuildwheel.macos]
 repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
 
 [tool.cibuildwheel.windows]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=6.0",
+    "pytest-cov>=2.0",
+]
+dev = [
+    "black>=22.0",
+    "isort>=5.0",
+    "mypy>=0.900",
+    "flake8>=4.0",
+]

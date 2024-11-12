@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing import List, Tuple, Dict
 import logging
-from job_shop_environment import Job
-from job_shop_manual_generator import ManualJobShopGenerator
+from per_jsp.environment.job_shop_environment import Job
+from per_jsp.environment.job_shop_manual_generator import ManualJobShopGenerator
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 import logging
 import time
 from typing import List, Tuple
-from jsp.jsp.py.job_shop_environment import JobShopEnvironment, Action
+from per_jsp.environment.job_shop_environment import JobShopEnvironment, Action
 from .base import BaseScheduler
 
 logger = logging.getLogger(__name__)

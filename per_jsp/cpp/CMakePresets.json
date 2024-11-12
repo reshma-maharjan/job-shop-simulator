@@ -1,0 +1,87 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 19,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "displayName": "Base Config",
+      "description": "Base build using Ninja generator",
+      "generator": "Ninja",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "VCPKG_INSTALLED_DIR": "$env{VCPKG_ROOT}/packages",
+        "VCPKG_MANIFEST_DIR": "${sourceDir}",
+        "VCPKG_TARGET_TRIPLET": "x64-linux",
+        "CMAKE_TOOLCHAIN_FILE": {
+          "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+          "type": "FILEPATH"
+        }
+      },
+      "environment": {
+
+
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "base",
+      "displayName": "Debug",
+      "description": "Debug build using Ninja generator",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "displayName": "Release",
+      "description": "Release build using Ninja generator",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS": "-O3 -DNDEBUG -march=native -flto -ffast-math -fno-omit-frame-pointer  -fno-rtti"
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "inherits": "base",
+      "displayName": "RelWithDebInfo",
+      "description": "RelWithDebInfo build using Ninja generator",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "relwithdebinfo"
+      }
+    },
+    {
+      "name": "pip-install",
+      "inherits": "base",
+      "displayName": "Pip Install",
+      "description": "Build only library and nanobind module for pip installation",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS": "-O3 -DNDEBUG -march=native -flto -ffast-math -fno-omit-frame-pointer",
+        "BUILD_EXECUTABLE": "OFF"
+      }
+    },
+    {
+      "name": "debug-dev",
+      "inherits": "debug",
+      "displayName": "Debug Dev",
+      "cacheVariables": {
+        "nanobind_DIR": "../venv/lib/python3.12/site-packages/nanobind/cmake"
+      },
+      "environment": {
+        "VCPKG_ROOT": "../vcpkg"
+      }
+
+    }
+
+
+
+  ],
+  "workflowPresets": []
+}
