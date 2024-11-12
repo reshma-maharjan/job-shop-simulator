@@ -1,3 +1,8 @@
 build
 *.egg-info
 out/build
+venv*
+vcpkg
+cmake-build-debug*
+.idea
+wandb*
