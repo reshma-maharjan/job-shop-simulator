@@ -1,5 +1,5 @@
 import numpy as np
-import jobshop
+import per_jspp as jobshop
 import wandb
 import argparse
 from dataclasses import dataclass

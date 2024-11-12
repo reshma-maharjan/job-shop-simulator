@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple, Optional
-import jobshop
+import per_jspp as jobshop
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -141,7 +141,7 @@ def validate_schedule(env: jobshop.JobShopEnvironment) -> Dict[str, Any]:
     # Verify all scheduled operations completed
     for machine_schedule in schedule:
         for entry in machine_schedule:
-            end_time = state.jobProgress(entry.job, entry.operation)
+            end_time = np.asarray(state.jobProgress, copy=False)[entry.job, entry.operation]
             if end_time == 0:
                 raise ValueError(f"Operation not completed: Job {entry.job}, Op {entry.operation}")
 

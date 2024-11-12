@@ -1,13 +1,14 @@
 from __future__ import annotations
 import argparse
 from typing import List, Optional, Callable
-import jobshop
+import per_jspp as jobshop
+from per_jsp import data
 import gymnasium as gym
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-from jsp.jsp_env import DefaultObservationSpace, MakespanRewardFunction, JobShopGymEnv, NormalizedObservationSpace, \
+from per_jsp.cpp.jsp_env import DefaultObservationSpace, MakespanRewardFunction, JobShopGymEnv, NormalizedObservationSpace, \
     ProgressRewardFunction
 
 
@@ -70,7 +71,7 @@ def run_experiment(algorithm_name: str, taillard_instance: str, use_gui: bool, m
                    observation_space: str, reward_function: str) -> None:
     def make_env() -> Callable[[], gym.Env]:
         #instance: jobshop.TaillardInstance = getattr(jobshop.TaillardInstance, taillard_instance)
-        jobs, ta_optimal = jobshop.ManualJobShopGenerator.generateFromFile("/home/per/jsp/jsp/environments/doris.json")
+        jobs, ta_optimal = jobshop.ManualJobShopGenerator.generateFromFile(str(data.get_problem_instance("doris.json")))
         print(jobs, ta_optimal)
         #jobs, ta_optimal = jobshop.TaillardJobShopGenerator.loadProblem(instance, True)
         print(f"Optimal makespan for {taillard_instance}: {ta_optimal}")

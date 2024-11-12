@@ -1,5 +1,5 @@
 import numpy as np
-import jobshop
+import per_jspp as jobshop
 from dataclasses import dataclass
 import wandb
 

@@ -34,11 +34,17 @@ classifiers = [
 "Documentation" = "https://github.com/cair/jobshop/wiki"
 
 [tool.setuptools]
-packages = ["per_jsp", "per_jsp.algorithms", "per_jsp.cpp", "per_jsp.environment"]
-package-dir = {"" = "per_jsp/python"}
+packages = ["per_jsp", "per_jsp.algorithms", "per_jsp.cpp", "per_jsp.environment", "per_jsp.data"]
+package-dir = { "" = "per_jsp", "per_jsp" = "per_jsp/python/per_jsp", "per_jsp.data" = "per_jsp/data" }
 
 [tool.setuptools.package-data]
-per_jsp = ["*.so", "*.pyd", "*.dylib"]
+"per_jsp" = ["*.so", "*.pyd", "*.dylib"]
+"per_jsp.data" = [
+    "problem_instances/**/*",
+    "taillard_instances/**/*",
+    "install_requirements.sh",
+    "parser.py"
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

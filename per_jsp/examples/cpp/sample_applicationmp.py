@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import List
 
-import jobshop
+import per_jspp as jobshop
 from tqdm import tqdm
 
 @dataclass

@@ -1,5 +1,5 @@
 import argparse
-import jobshop
+import per_jspp as jobshop
 from tqdm import tqdm
 
 def run_experiment(algorithm_name: str, taillard_instance: str):
