@@ -1,0 +1,9 @@
+out
+vcpkg
+*.pyc
+run-*
+output_*
+__pycache__
+wandb
+cmake-build-debug-dev
+cmake-build-debug

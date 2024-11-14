@@ -1,0 +1,7 @@
+tqdm
+numpy
+gymnasium
+stable-baselines3
+sb3-contrib
+loguru
+wandb
