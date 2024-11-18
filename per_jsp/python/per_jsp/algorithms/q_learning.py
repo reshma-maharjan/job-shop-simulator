@@ -2,8 +2,9 @@ import numpy as np
 import time
 import logging
 from typing import List, Tuple, Dict
-from .base import BaseScheduler
+from per_jsp.algorithms.base import BaseScheduler
 from per_jsp.environment.job_shop_environment import JobShopEnvironment, Action
+import argparse
 
 logger = logging.getLogger(__name__)
 
@@ -139,3 +140,62 @@ class QLearningScheduler(BaseScheduler):
         logger.info(f"Final makespan: {env.total_time}")
 
         return best_actions, env.total_time
+
+    def parse_args():
+        parser = argparse.ArgumentParser(description='Job Shop Scheduling with Q-Learning')
+        parser.add_argument('--episodes', type=int, default=5000,
+                            help='Number of training episodes')
+        parser.add_argument('--lr', type=float, default=0.1,
+                            help='Learning rate')
+        parser.add_argument('--gamma', type=float, default=0.99,
+                            help='Discount factor')
+        parser.add_argument('--eps_start', type=float, default=1.0,
+                            help='Starting epsilon for exploration')
+        parser.add_argument('--eps_end', type=float, default=0.01,
+                            help='Final epsilon for exploration')
+        parser.add_argument('--eps_decay', type=float, default=0.999,
+                            help='Epsilon decay rate')
+        parser.add_argument('--project', type=str, default="jobshop_10x10",
+                            help='WandB project name')
+        parser.add_argument('--problem_type', choices=['manual', 'taillard', 'json'],
+                            default='json', help='Type of problem to solve')
+        parser.add_argument('--taillard_instance',
+                            choices=[f"TA{i:02d}" for i in range(1, 81)],
+                            default="TA01", help="Taillard instance")
+        parser.add_argument('--problem_path', type=str, default="/home/per/jsp/jsp/environments/doris.json",
+                            help='Path to JSON problem file')
+        parser.add_argument('--reward_scaling', type=float, default=0.01,
+                            help='Scaling factor for rewards')
+
+        return parser.parse_args()
+
+def main():
+    # Parse command line arguments
+    args = QLearningScheduler.parse_args()
+
+    # Set up logging
+    logging.basicConfig(level=logging.INFO)
+    
+    # Create a JobShopEnvironment instance
+    # Assuming JobShopEnvironment takes a problem file path (from args) and other parameters if needed
+    env = JobShopEnvironment(problem_path=args.problem_path, problem_type=args.problem_type)
+
+    # Create the QLearningScheduler instance
+    scheduler = QLearningScheduler(
+        learning_rate=args.lr,
+        discount_factor=args.gamma,
+        epsilon=args.eps_start,
+        episodes=args.episodes
+    )
+    
+    # Training the scheduler and solving the job shop scheduling problem
+    best_actions, final_makespan = scheduler.solve(env)
+
+    # Output the results
+    print(f"Best makespan found: {final_makespan}")
+    print("Best actions sequence:")
+    for action in best_actions:
+        print(f"Job: {action.job}, Machine: {action.machine}, Operation: {action.operation}")
+
+if __name__ == "__main__":
+    main()
