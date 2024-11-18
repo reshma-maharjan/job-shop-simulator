@@ -353,6 +353,7 @@ public:
     static std::pair<std::vector<Job>, int> generateFromFile(const std::string& filename) {
         SPDLOG_INFO("Starting to generate job shop from file: {}", filename);
         auto jobShopData = JobShopJsonHandler::readFromJson(filename);
+        std::cout << "Job shop data: " << jobShopData << std::endl;
         return generateFromData(jobShopData);
     }
 
