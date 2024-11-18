@@ -73,7 +73,7 @@ class QLearningScheduler(BaseScheduler):
         best_makespan = float('inf')
 
         # Training phase
-        logger.info(f"Starting Q-learning training for {self.episodes} episodes...")
+        logger.debug(f"Starting Q-learning training for {self.episodes} episodes...")
 
         for episode in range(self.episodes):
             env.reset()
@@ -127,7 +127,7 @@ class QLearningScheduler(BaseScheduler):
                 best_actions = episode_actions.copy()
 
             if (episode + 1) % 10 == 0:
-                logger.info(f"Episode {episode + 1}/{self.episodes}, "
+                logger.debug(f"Episode {episode + 1}/{self.episodes}, "
                             f"Best makespan: {best_makespan}")
 
         # Final run with best policy
@@ -136,8 +136,8 @@ class QLearningScheduler(BaseScheduler):
             env.step(action)
 
         solve_time = time.time() - start_time
-        logger.info(f"Q-learning solved in {solve_time:.2f} seconds")
-        logger.info(f"Final makespan: {env.total_time}")
+        logger.debug(f"Q-learning solved in {solve_time:.2f} seconds")
+        logger.debug(f"Final makespan: {env.total_time}")
 
         return best_actions, env.total_time
 
