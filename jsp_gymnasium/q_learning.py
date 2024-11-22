@@ -7,6 +7,8 @@ import argparse
 import json  # Add this import
 from pathlib import Path  # Add this import
 from collections import defaultdict
+from Job_shop_taillard_generator import TaillardGymGenerator
+from job_shop_manual_generator import ManualGymGenerator  # Add this import
 
 logger = logging.getLogger(__name__)
 
@@ -247,10 +249,10 @@ def main():
         
         # Create environment based on instance type
         if args.instance.startswith('ta'):
-            from Job_shop_taillard_generator import TaillardGymGenerator
+            
             env = TaillardGymGenerator.create_env_from_instance(args.instance)
         else:
-            from manual_generator import ManualGymGenerator
+           
             env = ManualGymGenerator.create_env_from_file(args.instance)
         
         print("\nProblem Configuration:")
