@@ -260,28 +260,48 @@ class JobShopGymEnv(gym.Env):
         action = self._decode_action(action_id)
         
         if not self._is_valid_action(action):
-            return (
-                self._get_observation(),
-                -1000.0,
-                False,
-                False,
-                {"valid_action": False}
-            )
+            next_state = self._get_observation()
+            reward = -1000.0
+            done = False
+            info = {"valid_action": False}
+            
+            # Store step information
+            self.last_step_info = {
+                'next_state': next_state,
+                'reward': reward,
+                'done': done,
+                'info': {
+                    **info,
+                    'makespan': self.total_time,
+                    'machine_utilization': self.get_machine_utilization()
+                }
+            }
+            
+            return next_state, reward, done, False, info
             
         self._execute_action(action)
         
+        next_state = self._get_observation()
         reward = self._calculate_reward()
-        
         done = self.is_done()
         
         info = {
             "valid_action": True,
             "makespan": self.total_time,
-            "completed_jobs": int(np.sum(self.current_state.completed_jobs))
+            "completed_jobs": int(np.sum(self.current_state.completed_jobs)),
+            "machine_utilization": self.get_machine_utilization()
         }
         
-        return self._get_observation(), reward, done, False, info
-
+        # Store step information
+        self.last_step_info = {
+            'next_state': next_state,
+            'reward': reward,
+            'done': done,
+            'info': info
+        }
+        
+        return next_state, reward, done, False, info
+        
     def _calculate_reward(self) -> float:
         completed_jobs = np.sum(self.current_state.completed_jobs)
         total_jobs = len(self.jobs)
