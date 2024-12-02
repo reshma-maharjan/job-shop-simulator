@@ -694,7 +694,7 @@ def set_seeds(seed: int = 42) -> None:
 def init_wandb(config: Dict[str, Any], instance_name: str) -> None:
     """Initialize Weights & Biases logging"""
     wandb.init(
-        project="job-shop-qtm",
+        project="job-shop-qtm_server",
         entity="reshma-stha2016",  # Using your actual W&B username
         name=f"QTM_{instance_name}_{time.strftime('%Y%m%d_%H%M%S')}",
         config={
