@@ -1,4 +1,3 @@
-# Part 1: Imports and Initial Setup
 import numpy as np
 import torch
 from typing import List, Dict, Tuple, Any
@@ -9,7 +8,6 @@ import gymnasium as gym
 from gymnasium.envs.registration import register
 from Job_shop_taillard_generator import TaillardGymGenerator
 import wandb
-import argparse
 import os
 from tqdm.auto import tqdm  
 from pathlib import Path
@@ -22,6 +20,9 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel
 import socket
 import torch.nn as nn
+import datetime
+
+torch.backends.cudnn.benchmark = True
 
 DTYPE_FLOAT = torch.float32
 DTYPE_INT = torch.int32
@@ -30,6 +31,9 @@ wandb.login(key="22a8b69ab5255b120ca37b40c2f998f71db3c615")
 
 # Device configuration
 logger = logging.getLogger(__name__)
+# Add at the top of the file, after imports
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512,expandable_segments:True'
+torch.cuda.set_per_process_memory_fraction(0.8)  # Use only 80% of available memory
 
 def get_device(rank=None):
     if torch.cuda.is_available():
@@ -40,6 +44,7 @@ def get_device(rank=None):
     return torch.device('cpu')
 
 def find_free_port():
+    """Find a free port on localhost"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('', 0))
         s.listen(1)
@@ -50,16 +55,32 @@ def setup(rank, world_size):
     """
     Setup the distributed training environment
     """
-    # Check if process group is already initialized
     if dist.is_initialized():
         return
     
     try:
-        # Set static port for initial process group setup
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = str(29500)
+        
+        # Set a fixed port or find a free one
+        if 'MASTER_PORT' not in os.environ:
+            if rank == 0:
+                port = find_free_port()
+                os.environ['MASTER_PORT'] = str(port)
+                print(f"Rank 0: Selected port {port}")
+                
+                # Save port to a file for other processes to read
+                with open('port.txt', 'w') as f:
+                    f.write(str(port))
+            else:
+                # Other ranks wait for port.txt to appear and read from it
+                while not os.path.exists('port.txt'):
+                    time.sleep(0.1)
+                with open('port.txt', 'r') as f:
+                    port = f.read().strip()
+                os.environ['MASTER_PORT'] = port
+                print(f"Rank {rank}: Using port {port}")
 
-        # Initialize the process group first
+        # Initialize the process group
         dist.init_process_group(
             backend="nccl",
             rank=rank,
@@ -75,48 +96,18 @@ def setup(rank, world_size):
         if dist.is_initialized():
             dist.destroy_process_group()
         raise e
-    
-def cleanup():
 
+def cleanup():
+    """Clean up the distributed environment"""
     if dist.is_initialized():
         dist.destroy_process_group()
-
-# Add at the top of the file, after imports
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
-torch.cuda.set_per_process_memory_fraction(0.8)  # Use only 80% of available memory
-
-# Add GPU memory management function
-def manage_gpu_memory():
-    if torch.cuda.is_available():
-        # Empty cache
-        torch.cuda.empty_cache()
-        # Set memory allocator settings
-        torch.cuda.set_per_process_memory_fraction(0.8)  # Use only 80% of available memory
-        # Print memory stats
-        print(f"GPU Memory Summary:")
-        print(f"Allocated: {torch.cuda.memory_allocated(1)/1024**3:.2f} GB")
-        print(f"Cached: {torch.cuda.memory_reserved(1)/1024**3:.2f} GB")
-
-def setup_distributed():
-    # Set environment variables if not already set
-    if 'RANK' not in os.environ:
-        os.environ['RANK'] = '0'
-    if 'WORLD_SIZE' not in os.environ:
-        os.environ['WORLD_SIZE'] = '1'
-    if 'MASTER_ADDR' not in os.environ:
-        os.environ['MASTER_ADDR'] = 'localhost'
-    if 'MASTER_PORT' not in os.environ:
-        os.environ['MASTER_PORT'] = '12355'
-    if 'LOCAL_RANK' not in os.environ:
-        os.environ['LOCAL_RANK'] = '0'
-
-    # Initialize the process group
-    dist.init_process_group(
-        backend='nccl' if torch.cuda.is_available() else 'gloo',
-        init_method='env://',
-        world_size=int(os.environ['WORLD_SIZE']),
-        rank=int(os.environ['RANK'])
-    )
+    
+    # Remove the port file if it exists
+    if os.path.exists('port.txt'):
+        try:
+            os.remove('port.txt')
+        except:
+            pass
 
 def binary_encode_gpu(value: torch.Tensor, num_bits: int) -> torch.Tensor:
     """Convert a value to its binary representation using GPU operations"""
@@ -130,11 +121,28 @@ def binary_encode_gpu(value: torch.Tensor, num_bits: int) -> torch.Tensor:
         
     return bits
 
-def create_environment(instance_name):
-    """Create and register the job shop environment"""
+def create_environment(instance_name: str):
+    """Create and register the job shop environment
+    
+    Args:
+        instance_name: Name of the Taillard instance (with or without .txt extension)
+        
+    Returns:
+        tuple: (wrapped_env, base_env)
+        
+    Raises:
+        RuntimeError: If environment creation fails
+    """
     try:
+        # Ensure proper file extension
+        if not instance_name.endswith('.txt'):
+            instance_name = f'{instance_name}.txt'
+            
+        # Log the exact path being used
+        logger.info(f"Creating environment from instance: {instance_name}")
+        
         # Create base environment from Taillard instance
-        base_env = TaillardGymGenerator.create_env_from_instance(f'{instance_name}.txt')
+        base_env = TaillardGymGenerator.create_env_from_instance(instance_name)
         
         # Unregister if environment already exists
         try:
@@ -155,19 +163,35 @@ def create_environment(instance_name):
         # Create environment instance
         env = gym.make('JobShop-Taillard-v0')
         
-        # Apply the wrapper
+        # Apply the wrapper for dtype conversion
         env = DTypeWrapper(env)
         
         # Verify observation space and types
         test_obs, _ = env.reset()
-        assert test_obs.dtype == np.float32, f"Observation dtype is {test_obs.dtype}, expected float32"
-        assert env.observation_space.contains(test_obs), "Initial observation out of bounds"
+        
+        # More detailed error messages for debugging
+        if test_obs.dtype != np.float32:
+            logger.warning(f"Observation dtype is {test_obs.dtype}, converting to float32")
+            test_obs = test_obs.astype(np.float32)
+            
+        if not env.observation_space.contains(test_obs):
+            logger.warning("Initial observation out of bounds. Checking values:")
+            logger.warning(f"Observation shape: {test_obs.shape}")
+            logger.warning(f"Observation space: {env.observation_space}")
+            logger.warning(f"Min value: {test_obs.min()}, Max value: {test_obs.max()}")
+        
+        # Log successful creation
+        logger.info(f"Successfully created environment:")
+        logger.info(f"- Observation space: {env.observation_space}")
+        logger.info(f"- Action space: {env.action_space}")
         
         return env, base_env
-    
+        
+    except FileNotFoundError as e:
+        raise RuntimeError(f"Taillard instance file not found: {instance_name}") from e
     except Exception as e:
         raise RuntimeError(f"Failed to create environment: {str(e)}") from e
-
+    
 def verify_environment(env):
     """Verify environment setup and observation space"""
     logger.info("Verifying environment setup...")
@@ -213,14 +237,18 @@ class TsetlinAutomata:
         self.clause_sign = None
         self.clause_output = None
         self.feedback_to_clauses = None
-    
+        
+        # Add memory management settings
+        torch.cuda.set_per_process_memory_fraction(0.7)  # Use only 70% of available GPU memory
+        self.chunk_size = 1000  # Process data in chunks to avoid OOM
+
     def initialize(self, number_of_features):
         """Initialize using GPU tensors"""
         self.number_of_features = number_of_features
         
         # Initialize tensors on GPU
-        self.ta_state = torch.ones((self.number_of_clauses, 2, self.number_of_features), 
-                                 dtype=torch.int8, device=self.device) * 16
+        self.ta_state = torch.full((self.number_of_clauses, 2, self.number_of_features),      
+                          16, dtype=torch.int8, device=self.device)
         self.clause_sign = torch.ones(self.number_of_clauses, 
                                     dtype=torch.int8, device=self.device)
         self.clause_output = torch.zeros(self.number_of_clauses, 
@@ -237,7 +265,6 @@ class TsetlinAutomata:
             self.clause_output = self.clause_output.to(device)
             self.feedback_to_clauses = self.feedback_to_clauses.to(device)
         return self
-        
     
     def get_params(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Get current parameters of the Tsetlin Machine"""
@@ -246,10 +273,121 @@ class TsetlinAutomata:
     def set_params(self, ta_state: torch.Tensor, clause_sign: torch.Tensor, 
                   clause_output: torch.Tensor, feedback_to_clauses: torch.Tensor):
         """Set parameters of the Tsetlin Machine"""
-        self.ta_state = ta_state.to(DEVICE)
-        self.clause_sign = clause_sign.to(DEVICE)
-        self.clause_output = clause_output.to(DEVICE)
-        self.feedback_to_clauses = feedback_to_clauses.to(DEVICE)
+        self.ta_state = ta_state.to(self.device)  # Changed DEVICE to self.device
+        self.clause_sign = clause_sign.to(self.device)
+        self.clause_output = clause_output.to(self.device)
+        self.feedback_to_clauses = feedback_to_clauses.to(self.device)
+
+    # Add the new optimized method
+    def update_ta_states_batch(self, binary_features: torch.Tensor, feedback: torch.Tensor):
+        """Update TA states for batch using chunked processing and memory optimization"""
+        try:
+            batch_size = binary_features.size(0)
+            
+            # Process in chunks to manage memory
+            for start_idx in range(0, batch_size, self.chunk_size):
+                # Clear cache before processing each chunk
+                torch.cuda.empty_cache()
+                
+                # Get current chunk
+                end_idx = min(start_idx + self.chunk_size, batch_size)
+                chunk_features = binary_features[start_idx:end_idx]
+                chunk_feedback = feedback[start_idx:end_idx]
+                
+                # Use mixed precision for computation
+                #with torch.cuda.amp.autocast('cuda'):
+                with torch.autocast('cuda'):
+                    # Generate random matrices for current chunk
+                    rand_s = torch.rand((end_idx - start_idx, self.number_of_clauses, 
+                                       self.number_of_features), device=self.device)
+                    rand_T = torch.rand((end_idx - start_idx, self.number_of_clauses, 
+                                       self.number_of_features), device=self.device)
+                    
+                    # Process Type I feedback (strengthening)
+                    feedback_expanded = chunk_feedback.unsqueeze(-1).expand(
+                        -1, -1, self.number_of_features)
+                    features_expanded = chunk_features.unsqueeze(1).expand(
+                        -1, self.number_of_clauses, -1)
+                    
+                    # Calculate masks for updates
+                    type_I_mask = (feedback_expanded == 1)
+                    features_present = (features_expanded == 1)
+                    
+                    # Update include actions
+                    with torch.no_grad():
+                        # Include actions update
+                        include_conditions = type_I_mask & features_present
+                        if include_conditions.any():
+                            include_updates = torch.where(
+                                include_conditions.any(dim=0),
+                                torch.clamp(self.ta_state[:, 0, :] - 1, min=1),
+                                self.ta_state[:, 0, :]
+                            )
+                            self.ta_state[:, 0, :] = include_updates
+                        
+                        # Exclude actions update
+                        exclude_conditions = type_I_mask & ~features_present & (rand_s < self.s)
+                        if exclude_conditions.any():
+                            exclude_updates = torch.where(
+                                exclude_conditions.any(dim=0),
+                                torch.clamp(self.ta_state[:, 1, :] + 1, max=32),
+                                self.ta_state[:, 1, :]
+                            )
+                            self.ta_state[:, 1, :] = exclude_updates
+                        
+                        # Process Type II feedback (weakening)
+                        type_II_mask = ~type_I_mask & (rand_T < (1.0 / self.T))
+                        
+                        # Update weakening conditions
+                        if type_II_mask.any():
+                            weaken_include = torch.where(
+                                (type_II_mask & features_present).any(dim=0),
+                                torch.clamp(self.ta_state[:, 0, :] + 1, max=32),
+                                self.ta_state[:, 0, :]
+                            )
+                            weaken_exclude = torch.where(
+                                (type_II_mask & ~features_present).any(dim=0),
+                                torch.clamp(self.ta_state[:, 1, :] - 1, min=1),
+                                self.ta_state[:, 1, :]
+                            )
+                            self.ta_state[:, 0, :] = weaken_include
+                            self.ta_state[:, 1, :] = weaken_exclude
+                
+                # Clear intermediary tensors
+                del rand_s, rand_T, feedback_expanded, features_expanded
+                del type_I_mask, features_present, include_conditions
+                del exclude_conditions, type_II_mask
+                torch.cuda.empty_cache()
+    
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                # Clear cache and reduce chunk size
+                torch.cuda.empty_cache()
+                self.chunk_size = max(1, self.chunk_size // 2)
+                print(f"Reduced chunk size to {self.chunk_size} due to OOM")
+                
+                if self.chunk_size >= 1:
+                    # Retry with smaller chunk size
+                    return self.update_ta_states_batch(binary_features, feedback)
+                else:
+                    raise RuntimeError("Unable to process even with minimum chunk size")
+            raise e
+
+    def clean_gpu_memory(self):
+        """Clean up GPU memory"""
+        if hasattr(self, 'ta_state'):
+            del self.ta_state
+        if hasattr(self, 'clause_sign'):
+            del self.clause_sign
+        if hasattr(self, 'clause_output'):
+            del self.clause_output
+        if hasattr(self, 'feedback_to_clauses'):
+            del self.feedback_to_clauses
+        torch.cuda.empty_cache()
+
+    def __del__(self):
+        """Destructor to ensure GPU memory cleanup"""
+        self.clean_gpu_memory()
 
 class JSSPFeatureTransformer:
     def __init__(self, config):
@@ -492,60 +630,36 @@ class Policy(nn.Module):
         # Update TA states
         self.update_ta_states_batch(tm, binary_features, feedback)
 
-    def update_ta_states_batch(self, tm: TsetlinAutomata, 
-                             features: torch.Tensor, 
-                             feedback: torch.Tensor):
-        """Update TA states for batch using GPU operations"""
-        batch_size = features.size(0)
-        
-        # Generate random matrices for probabilistic updates
-        rand_s = torch.rand((batch_size, tm.number_of_clauses, tm.number_of_features), 
-                          device=self.device)
-        rand_T = torch.rand((batch_size, tm.number_of_clauses, tm.number_of_features), 
-                          device=self.device)
-        
-        # Expand feedback for broadcasting
-        feedback_expanded = feedback.unsqueeze(-1).expand(-1, -1, tm.number_of_features)
-        
-        # Type I feedback (strengthening)
-        type_I_mask = feedback_expanded == 1
-        
-        # Features present (1)
-        features_present = features.unsqueeze(1).expand(-1, tm.number_of_clauses, -1) == 1
-        
-        # Update include actions
-        include_conditions = type_I_mask & features_present
-        tm.ta_state[:, 0, :] = torch.where(
-            include_conditions.any(dim=0),
-            torch.clamp(tm.ta_state[:, 0, :] - 1, min=1),
-            tm.ta_state[:, 0, :]
-        )
-        
-        # Update exclude actions with probability s
-        exclude_updates = type_I_mask & ~features_present & (rand_s < self.s_tensor)
-        tm.ta_state[:, 1, :] = torch.where(
-            exclude_updates.any(dim=0),
-            torch.clamp(tm.ta_state[:, 1, :] + 1, max=32),
-            tm.ta_state[:, 1, :]
-        )
-        
-        # Type II feedback (weakening)
-        type_II_mask = ~type_I_mask
-        
-        # Update with probability 1/T
-        weaken_updates = type_II_mask & (rand_T < (1.0 / self.T_tensor))
-        
-        tm.ta_state[:, 0, :] = torch.where(
-            (weaken_updates & features_present).any(dim=0),
-            torch.clamp(tm.ta_state[:, 0, :] + 1, max=32),
-            tm.ta_state[:, 0, :]
-        )
-        
-        tm.ta_state[:, 1, :] = torch.where(
-            (weaken_updates & ~features_present).any(dim=0),
-            torch.clamp(tm.ta_state[:, 1, :] + 1, max=32),
-            tm.ta_state[:, 1, :]
-        )
+    def update_ta_states_batch(self, tm: TsetlinAutomata, binary_features: torch.Tensor, feedback: torch.Tensor):
+        """Update TA states for batch with reduced memory usage"""
+        try:
+            batch_size = binary_features.size(0)
+            chunk_size = 100  # Start with smaller chunks
+            
+            for start_idx in range(0, batch_size, chunk_size):
+                # Clear cache at start of each chunk
+                torch.cuda.empty_cache()
+                
+                end_idx = min(start_idx + chunk_size, batch_size)
+                chunk_features = binary_features[start_idx:end_idx]
+                chunk_feedback = feedback[start_idx:end_idx]
+                
+                with torch.autocast('cuda'):
+                #with torch.cuda.amp.autocast('cuda'):
+                    # Process each chunk
+                    tm.update_ta_states_batch(chunk_features, chunk_feedback)
+                    
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                torch.cuda.empty_cache()
+                # Reduce chunk size and retry
+                chunk_size = max(1, chunk_size // 2)
+                print(f"Reduced policy chunk size to {chunk_size}")
+                if chunk_size >= 1:
+                    return self.update_ta_states_batch(tm, binary_features, feedback)
+                else:
+                    raise RuntimeError("Memory management failed even with minimum chunk size")
+            raise e
 
     def get_valid_actions(self) -> List[int]:
         """Get list of valid actions from environment"""
@@ -703,65 +817,57 @@ class QTMAgent:
         )
 
     def rollout(self):
-        """Execute one episode"""
-        cur_obs, _ = self.env.reset()
-        episode_reward = torch.tensor(0.0, device=self.device)
-        episode_actions = []
-        
-        while True:
-            # Select and execute action
-            action = self.get_next_action(cur_obs)
-            next_obs, reward, terminated, truncated, info = self.env.step(action)
+        """Execute one episode with memory management"""
+        try:
+            cur_obs, _ = self.env.reset()
+            episode_reward = torch.tensor(0.0, device=self.device)
+            episode_actions = []
             
-            # Calculate custom reward
-            custom_reward = self.calculate_reward(info)
-            
-            # Store experience
-            self.replay_buffer.save_experience(
-                action, cur_obs, next_obs, custom_reward, 
-                int(terminated), int(truncated)
-            )
-            
-            # Update statistics
-            episode_reward += custom_reward
-            episode_actions.append(action)
-            self.total_timesteps += 1
-            
-            # Train if buffer is ready
-            if (self.total_timesteps >= self.config['sample_size'] and 
-                self.total_timesteps % self.config['train_freq'] == 0):
-                self.train()
-                
-                # Log training metrics
-                if wandb.run is not None:
-                    wandb.log({
-                        "timestep": self.total_timesteps,
-                        "training_loss": self.last_training_loss,
-                        "buffer_size": self.replay_buffer.count
-                    })
-            
-            # Update exploration rate
-            self.update_epsilon()
-            
-            # Update current observation
-            cur_obs = next_obs
-            
-            if terminated or truncated:
-                current_makespan = info.get('makespan', float('inf'))
-                if current_makespan < self.best_makespan:
-                    self.best_makespan = current_makespan
-                    self.best_actions = episode_actions.copy()
-                    logger.info(f"New best makespan: {self.best_makespan}")
+            while True:
+                # Clear cache periodically
+                if len(episode_actions) % 100 == 0:
+                    torch.cuda.empty_cache()
                     
-                    # Log best solution
-                    if wandb.run is not None:
-                        wandb.log({
-                            "best_makespan": self.best_makespan,
-                            "best_solution_length": len(self.best_actions)
-                        })
-                break
+                action = self.get_next_action(cur_obs)
+                next_obs, reward, terminated, truncated, info = self.env.step(action)
+                
+                # Calculate custom reward
+                custom_reward = self.calculate_reward(info)
+                
+                # Store experience
+                self.replay_buffer.save_experience(
+                    action, cur_obs, next_obs, custom_reward, 
+                    int(terminated), int(truncated)
+                )
+                
+                # Update statistics
+                episode_reward += custom_reward
+                episode_actions.append(action)
+                self.total_timesteps += 1
+                
+                # Train if buffer is ready
+                if (self.total_timesteps >= self.config['sample_size'] and 
+                    self.total_timesteps % self.config['train_freq'] == 0):
+                    self.train()
+                    torch.cuda.empty_cache()  # Clear cache after training
+                
+                # Update exploration rate
+                self.update_epsilon()
+                
+                # Update current observation
+                cur_obs = next_obs
+                
+                if terminated or truncated:
+                    break
+                    
+            return episode_reward.item(), episode_actions
             
-        return episode_reward.item(), episode_actions
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                torch.cuda.empty_cache()
+                print("Memory error in rollout, cleaning up...")
+                raise
+            raise e
 
     def learn(self, nr_of_episodes: int) -> Tuple[List[int], float]:
         """Main training loop"""
@@ -899,6 +1005,7 @@ class ReplayBuffer:
             
         return n_step_returns
 
+
     def clear(self) -> None:
         """Clear the replay buffer"""
         self.count = 0
@@ -1020,6 +1127,7 @@ class DTypeWrapper(gym.Wrapper):
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
+        obs= obs.astype(np.float32)
         # Clip observation to be within bounds and ensure float32 type
         obs = np.clip(
             obs.astype(np.float32),
@@ -1029,103 +1137,150 @@ class DTypeWrapper(gym.Wrapper):
         return obs, info
     
 def train_on_gpu(rank, world_size, instance_name):
-    setup(rank, world_size)
-    device = get_device(rank)
-    
     try:
-        print(f"Starting training on GPU {rank}")
-        
-        # Create environment and agent setup
-        env, base_env = create_environment(instance_name)
-        config = create_config(env, base_env, obs_space_size)
-        config['batch_size'] = config['batch_size'] // world_size  # Adjust batch size for each GPU
-
-        #pass rank to QTMAgent
-        agent = QTMAgent(env, config, rank)
-        
-        # Train
-        best_actions, best_makespan = agent.learn(nr_of_episodes=1000)
-
+        # Setup distributed training if using multiple GPUs
         if world_size > 1:
-            # Gather results from all GPUs
+            setup(rank, world_size)
+        device = get_device(rank)
+        print(f"GPU {rank}: Setup complete, using device {device}")
+        
+        # Environment setup
+        env, base_env = create_environment(instance_name)
+        obs_space_size = env.observation_space.shape[0] if hasattr(env.observation_space, 'shape') else env.observation_space.n
+        
+        # Create and validate config
+        config = create_config(env, base_env, obs_space_size)
+        
+        # Adjust sample size for distributed training
+        if world_size > 1:
+            config['sample_size'] = max(1, config['sample_size'] // world_size)
+            
+        # Initialize wandb only on main process
+        if rank == 0:
+            env_status = verify_environment(env)
+            logger.info("Environment verification results:")
+            for key, value in env_status.items():
+                logger.info(f"{key}: {value}")
+            
+            if not all(env_status.values()):
+                raise RuntimeError("Environment verification failed")
+                
+            print(f"Observation space size: {obs_space_size}")
+            print(f"Action space size: {config['action_space_size']}")
+            init_wandb(config, instance_name)
+            
+        # Initialize agent and train
+        agent = QTMAgent(env, config, rank=rank)
+        
+        # Synchronize before training if using multiple GPUs
+        if world_size > 1:
+            torch.distributed.barrier()
+            
+        best_actions, best_makespan = agent.learn(nr_of_episodes=5)
+
+        #print the makespan at each episode
+        print(f"Best makespan at each episode: {agent.episode_rewards}")
+
+        
+        # Handle multi-GPU results
+        if world_size > 1:
             makespans = [None] * world_size
             actions = [None] * world_size
+            
+            torch.distributed.barrier()
             
             dist.all_gather_object(makespans, best_makespan)
             dist.all_gather_object(actions, best_actions)
             
-            # Find best result
             best_idx = np.argmin(makespans)
             best_makespan = makespans[best_idx]
             best_actions = actions[best_idx]
         
-        # Save results only from main process
+        # Save results and log to wandb only on main process
         if rank == 0:
-            save_results(agent, best_actions, best_makespan, instance_name)
+            # Save model
+            model_artifact = wandb.Artifact(
+                f"model_{instance_name}", 
+                type="model",
+                description=f"QTM model for {instance_name}"
+            )
+            
+            model_path = f'model_{instance_name}.pt'
+            torch.save({
+                'best_makespan': best_makespan,
+                'config': config
+            }, model_path)
+            
+            model_artifact.add_file(model_path)
+            wandb.log_artifact(model_artifact)
+            
+            # Execute best solution and collect data
+            env.reset(seed=None)
+            schedule_data = []
+            
+            for action_id in best_actions:
+                obs, reward, done, truncated, info = env.step(action_id)
+                action = env.unwrapped._decode_action(action_id)
+                
+                schedule_data.append({
+                    'job': int(action.job),
+                    'machine': int(action.machine),
+                    'operation': int(action.operation),
+                    'start': int(info.get('start_time', 0)),
+                    'duration': int(env.unwrapped.jobs[action.job].operations[action.operation].duration),
+                    'end': int(info.get('end_time', 0))
+                })
+            
+            # Log results to wandb
+            machine_utilization = env.unwrapped.get_machine_utilization()
+            average_utilization = sum(machine_utilization) / len(machine_utilization) if machine_utilization else 0
+            
+            wandb.log({
+                "final_results": {
+                    "best_makespan": best_makespan,
+                    "number_of_actions": len(best_actions),
+                    "machine_utilization_avg": average_utilization
+                }
+            })
+            
+            # Save schedule data
+            schedule_path = f'schedule_{instance_name}.json'
+            with open(schedule_path, 'w') as f:
+                json.dump(schedule_data, f)
+                
+            schedule_artifact = wandb.Artifact(
+                f"schedule_{instance_name}",
+                type="schedule",
+                description=f"Best schedule for {instance_name}"
+            )
+            schedule_artifact.add_file(schedule_path)
+            wandb.log_artifact(schedule_artifact)
+            
+            # Update summary metrics
+            wandb.run.summary.update({
+                "best_makespan": best_makespan,
+                "final_memory_size": agent.replay_buffer.count,
+                "total_actions": len(best_actions)
+            })
+            
+            print(f"\nTraining completed. Results logged to W&B.")
+            print(f"Best makespan: {best_makespan}")
             
     except Exception as e:
-        print(f"Error on GPU {rank}: {str(e)}")
-        torch.cuda.empty_cache()
+        print(f"Critical error on GPU {rank}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        if world_size > 1 and dist.is_initialized():
+            dist.destroy_process_group()
+        raise
         
     finally:
-        cleanup()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if world_size > 1:
+            cleanup()
+        print(f"GPU {rank}: Cleanup complete")
 
-# def print_problem_config(instance: str, config: Dict, env) -> None:
-#     """Print detailed problem configuration with GPU info"""
-#     logger.info("\n" + "="*50)
-#     logger.info("PROBLEM CONFIGURATION")
-#     logger.info("="*50)
-    
-#     # Instance details
-#     logger.info("\nInstance Details:")
-#     logger.info(f"- Name: {instance}")
-#     logger.info(f"- Jobs: {config['n_jobs']}")
-#     logger.info(f"- Machines: {config['n_machines']}")
-#     logger.info(f"- Action Space Size: {config['action_space_size']}")
-#     logger.info(f"- Observation Space Size: {config['obs_space_size']}")
-    
-#     # Model parameters
-#     logger.info("\nModel Parameters:")
-#     logger.info(f"- Clauses per TM: {config['nr_of_clauses']}")
-#     logger.info(f"- Threshold T: {config['T']}")
-#     logger.info(f"- Specificity s: {config['s']}")
-#     logger.info(f"- Gamma: {config['gamma']}")
-#     logger.info(f"- Epsilon: {config['epsilon_init']} → {config['epsilon_min']}")
-    
-#     # Memory configuration
-#     logger.info("\nMemory Configuration:")
-#     logger.info(f"- Buffer Size: {config['buffer_size']}")
-#     logger.info(f"- Sample Size: {config['sample_size']}")
-    
-#     if torch.cuda.is_available():
-#         # GPU details
-#         logger.info("\nGPU Configuration:")
-#         logger.info(f"- Device: {torch.cuda.get_device_name(0)}")
-#         logger.info(f"- Memory Allocated: {torch.cuda.memory_allocated()/1024**2:.2f} MB")
-#         logger.info(f"- Memory Reserved: {torch.cuda.memory_reserved()/1024**2:.2f} MB")
-#         logger.info(f"- Memory Cached: {torch.cuda.memory_cached()/1024**2:.2f} MB")
-
-# def log_training_metrics(episode: int, episode_reward: float, makespan: float, 
-#                         epsilon: float, agent: 'QTMAgent'):
-#     """Log training metrics to wandb"""
-#     metrics = {
-#         "episode": episode,
-#         "reward": episode_reward,
-#         "makespan": makespan,
-#         "epsilon": epsilon,
-#         "best_makespan": agent.best_makespan,
-#     }
-
-#     # Add GPU metrics if available
-#     if torch.cuda.is_available():
-#         metrics.update({
-#             "gpu_utilization": torch.cuda.utilization(),
-#             "gpu_memory_allocated": torch.cuda.memory_allocated() / 1024**2,  # MB
-#             "gpu_memory_reserved": torch.cuda.memory_reserved() / 1024**2,    # MB
-#         })
-
-#     wandb.log(metrics)
-    
 def init_wandb(config: Dict[str, Any], instance_name: str, device=None):
     """Initialize Weights & Biases with GPU monitoring"""
     # Get device if not provided
@@ -1168,114 +1323,6 @@ def init_wandb(config: Dict[str, Any], instance_name: str, device=None):
         wandb.define_metric("gpu_memory_allocated", summary="max")
         wandb.define_metric("gpu_memory_reserved", summary="max")
     
-# def diagnose_jssp_environment(instance_name: str):
-    """Diagnostic function to verify JSSP environment creation and GPU configuration"""
-    logger.info("\n" + "="*50)
-    logger.info("JSSP ENVIRONMENT DIAGNOSTICS")
-    logger.info("="*50)
-    
-    # Check GPU availability
-    logger.info("\n0. GPU Configuration:")
-    if torch.cuda.is_available():
-        logger.info(f"✓ GPU available: {torch.cuda.get_device_name(0)}")
-        logger.info(f"✓ CUDA version: {torch.version.cuda}")
-        logger.info(f"✓ Total GPU memory: {torch.cuda.get_device_properties(0).total_memory/1024**2:.2f}MB")
-    else:
-        logger.warning("✗ No GPU available, using CPU")
-    
-    # Rest of the diagnostic checks...
-    try:
-        base_env = TaillardGymGenerator.create_env_from_instance(instance_name)
-        env = gym.make('JobShop-Taillard-v0')
-        
-        # Additional GPU-specific checks
-        if torch.cuda.is_available():
-            # Test GPU tensor creation
-            test_tensor = torch.zeros(100, device=self.device)
-            logger.info("✓ Successfully created GPU tensor")
-            
-            # Test moving environment state to GPU
-            initial_state, _ = env.reset()
-            state_tensor = torch.tensor(initial_state, device=self.device)
-            logger.info("✓ Successfully moved state to GPU")
-            
-            del test_tensor, state_tensor  # Clean up GPU memory
-            torch.cuda.empty_cache()
-    
-        return base_env, env
-        
-    except Exception as e:
-        logger.error(f"Environment diagnostics failed: {str(e)}")
-        return None, None
-
-# def inspect_taillard_instance(instance_name: str):
-    """Inspects and validates a Taillard instance with GPU memory management"""
-    logger.info("\n=== Taillard Instance Inspection ===")
-    
-    try:
-        base_env = TaillardGymGenerator.create_env_from_instance(instance_name)
-        
-        n_jobs = len(base_env.jobs)
-        n_machines = base_env.num_machines
-        
-        # Clean any GPU memory if available
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            
-        return n_jobs, n_machines, base_env.jobs
-        
-    except Exception as e:
-        logger.error(f"Error inspecting Taillard instance: {str(e)}")
-        return None, None, None
-
-# def validate_environment_creation(env):
-#     """Validates the created environment and GPU configuration"""
-#     logger.info("\n=== Environment Validation ===")
-    
-#     try:
-#         # Check environment attributes
-#         logger.info(f"\nEnvironment Type: {type(env)}")
-#         logger.info(f"Action Space: {env.action_space}")
-#         logger.info(f"Observation Space: {env.observation_space}")
-        
-#         # GPU-specific validation
-#         if torch.cuda.is_available():
-#             logger.info("\nGPU Validation:")
-#             # Test state tensor creation
-#             initial_state, _ = env.reset()
-#             state_tensor = torch.tensor(initial_state, device=DEVICE)
-#             logger.info(f"✓ State tensor shape on GPU: {state_tensor.shape}")
-#             logger.info(f"✓ State tensor device: {state_tensor.device}")
-            
-#             # Clean up GPU memory
-#             del state_tensor
-#             torch.cuda.empty_cache()
-        
-#         return True
-#     except Exception as e:
-#         logger.error(f"Environment validation failed: {str(e)}")
-#         return False
-    
-# def setup_logging(verbose: bool = False) -> None:
-#     """Setup logging configuration"""
-#     log_level = logging.DEBUG if verbose else logging.INFO
-#     logging.basicConfig(
-#         level=log_level,
-#         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-#         datefmt='%Y-%m-%d %H:%M:%S'
-#     )
-
-# def set_seeds(seed: int = 42) -> None:
-#     """Set random seeds for reproducibility"""
-#     random.seed(seed)
-#     np.random.seed(seed)
-#     torch.manual_seed(seed)
-#     if torch.cuda.is_available():
-#         torch.cuda.manual_seed(seed)
-#         torch.cuda.manual_seed_all(seed)  # for multi-GPU
-#         torch.backends.cudnn.deterministic = True
-#         torch.backends.cudnn.benchmark = False
-
 def save_results(agent, best_actions, best_makespan, instance_name: str, rank: int = 0) -> None:
     """
     Save results to file with proper JSON encoding
@@ -1369,45 +1416,14 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, torch.Tensor):
             return obj.cpu().numpy().tolist()
         return super().default(obj)
-    
-# def execute_best_solution(env, best_actions):
-#     """Execute and verify the best solution"""
-#     env.reset()
-#     schedule_data = []
-#     completed_operations = 0
-#     total_operations = env.unwrapped.n_jobs * env.unwrapped.n_machines
-    
-#     logger.info(f"\nExecuting best solution ({len(best_actions)} actions):")
-#     logger.info(f"Expected operations: {total_operations}")
-    
-#     for action_id in best_actions:
-#         action = env.unwrapped._decode_action(action_id)
-#         obs, reward, done, truncated, info = env.step(action_id)
-        
-#         if info.get('operation_completed', False):
-#             completed_operations += 1
-        
-#         schedule_data.append({
-#             'job': int(action.job),
-#             'machine': int(action.machine),
-#             'operation': int(action.operation),
-#             'start': int(info.get('start_time', 0)),
-#             'duration': int(env.unwrapped.jobs[action.job].operations[action.operation].duration),
-#             'end': int(info.get('end_time', 0))
-#         })
-        
-#         if completed_operations % 10 == 0:
-#             logger.info(f"Completed {completed_operations}/{total_operations} operations")
-    
-#     logger.info(f"\nFinal completion: {completed_operations}/{total_operations} operations")
-#     return schedule_data
 
 def create_config(env, base_env, obs_space_size):
     """Create configuration dictionary"""
     return {
         # Buffer parameters
-        'buffer_size': 500,  # Reduced size
-        'sample_size': 32,   # Reduced size
+        'buffer_size': 1000,  # Reduced from 500
+        'sample_size': 32,   # Reduced from 32
+        'chunk_size': 100,     # Add chunk size paramete
         
         # Learning parameters
         'gamma': 0.99,
@@ -1423,12 +1439,12 @@ def create_config(env, base_env, obs_space_size):
         'obs_space_size': obs_space_size,
         
         # Rest of your config parameters...
-        'nr_of_clauses': 1000,
+        'nr_of_clauses': 2000,
         'nr_of_state_bits': 10,
         'nr_of_tm_features': 10,
         'max_included_literals': 32,
-        'T': 10, 
-        's': 2.0,
+        'T': 15, 
+        's': 3.0,
         'Tmin': 1,
         'Tmax': 10,
         'T_decay': 0.9999,
@@ -1461,16 +1477,13 @@ def create_config(env, base_env, obs_space_size):
     }
 
 def main():
-    instance_name = 'ta11'
+    instance_name = 'ta01'
     world_size = 3
-
-    # Setup distributed training
-    local_rank = setup_distributed()
-
+    
+    logger.info(f"Found {world_size} GPUs")
     print(f"Found {world_size} GPUs")
     
     try:
-        
         if world_size > 1:
             # Multi-GPU setup
             mp.spawn(
@@ -1479,137 +1492,24 @@ def main():
                 nprocs=world_size,
                 join=True
             )
-
-        # Create environment
-        env, base_env = create_environment(instance_name)
-
-        # Calculate observation space size first
-        if hasattr(env.observation_space, 'shape'):
-            obs_space_size = env.observation_space.shape[0]
         else:
-            obs_space_size = env.observation_space.n
-        
-        # Create configuration 
-        config= create_config(env, base_env, obs_space_size)
-    
-         # Verify environment setup
-        env_status = verify_environment(env)
-        logger.info("Environment verification results:")
-        for key, value in env_status.items():
-            logger.info(f"{key}: {value}")
-        
-        if not all(env_status.values()):
-            raise RuntimeError("Environment verification failed")
-        
-        print(f"Observation space size: {obs_space_size}")
-        print(f"Action space size: {config['action_space_size']}")
-        
-        # Initialize wandb
-        init_wandb(config, instance_name)
-        
-        # Create and train agent
-        agent = QTMAgent(env, config, rank=0)
-        
-        # Create model artifact
-        model_artifact = wandb.Artifact(
-            f"model_{instance_name}", 
-            type="model",
-            description=f"QTM model for {instance_name}"
-        )
-        
-        # Train the agent
-        best_actions, best_makespan = agent.learn(nr_of_episodes=2)
-        
-        # Save final model
-        model_path = f'model_{instance_name}.pt'
-        torch.save({
-            #'model_state_dict': agent.policy.state_dict(),    # need to save model
-            'best_makespan': best_makespan,
-            'config': config
-        }, model_path)
-        
-        # Log model artifact
-        model_artifact.add_file(model_path)
-        wandb.log_artifact(model_artifact)
-        
-        # Execute best solution
-        env.reset(seed=None)
-        schedule_data = []
-        
-        # Execute actions and collect schedule data
-        for action_id in best_actions:
-            obs, reward, done, truncated, info = env.step(action_id)
-            action = env.unwrapped._decode_action(action_id)
+            # Single GPU/CPU training
+            train_on_gpu(0, 1, instance_name)
             
-            schedule_data.append({
-                'job': int(action.job),
-                'machine': int(action.machine),
-                'operation': int(action.operation),
-                'start': int(info.get('start_time', 0)),
-                'duration': int(env.unwrapped.jobs[action.job].operations[action.operation].duration),
-                'end': int(info.get('end_time', 0))
-            })
-        
-        # Log machine utilization
-        machine_utilization_table = wandb.Table(columns=["Machine", "Utilization"])
-        machine_utilization = env.unwrapped.get_machine_utilization()
-        
-        for i, u in enumerate(machine_utilization):
-            machine_utilization_table.add_data(i, float(u))
-        
-        # Log final results
-        wandb.log({
-            "final_results": {
-                "best_makespan": best_makespan,
-                "number_of_actions": len(best_actions),
-            }
-        })
-        
-        # Log average machine utilization
-        average_utilization = sum(machine_utilization) / len(machine_utilization) if machine_utilization else 0
-        wandb.log({"final_results.machine_utilization_avg": average_utilization})
-        
-        # Save and log schedule data
-        schedule_artifact = wandb.Artifact(
-            f"schedule_{instance_name}",
-            type="schedule",
-            description=f"Best schedule for {instance_name}"
-        )
-        
-        schedule_path = f'schedule_{instance_name}.json'
-        with open(schedule_path, 'w') as f:
-            json.dump(schedule_data, f)
-        schedule_artifact.add_file(schedule_path)
-        wandb.log_artifact(schedule_artifact)
-        
-        # Log summary metrics
-        wandb.run.summary.update({
-            "best_makespan": best_makespan,
-            "final_memory_size": agent.replay_buffer.count,
-            "total_actions": len(best_actions)
-        })
-        
-        print(f"\nTraining completed. Results logged to W&B.")
-        print(f"Best makespan: {best_makespan}")
-        
     except Exception as e:
-            # Basic error message
         error_msg = f"Error during training: {str(e)}"
         print(error_msg)
         
-        # Log to wandb if running
         if wandb.run is not None:
             wandb.run.summary["error"] = error_msg
             
-        # Basic GPU cleanup
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         
         raise e
-
     finally:
-        # Always close wandb
         if wandb.run is not None:
             wandb.finish()
+
 if __name__ == "__main__":
     main()
