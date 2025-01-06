@@ -138,7 +138,7 @@ class QTMAgent:
                     current_makespan = 0
             
             if isinstance(current_makespan, (int, float)) and current_makespan > 0:
-                makespan_penalty = min(current_makespan * 0.01, 100.0)
+                makespan_penalty = min(current_makespan * 0.05, 200.0)
                 logging.debug(f"Makespan penalty: {makespan_penalty}")
                 reward -= makespan_penalty
             
@@ -155,7 +155,7 @@ class QTMAgent:
                         logging.error(f"Error processing utilization: {e}")
                         utilization = 0
                 
-                utilization_bonus = min(float(utilization) * 50.0, 50.0)
+                utilization_bonus = min(float(utilization) * 20.0, 20.0)
                 logging.debug(f"Utilization bonus: {utilization_bonus}")
                 reward += utilization_bonus
             
@@ -317,7 +317,7 @@ class QTMAgent:
             current_makespan = info.get('makespan', float('inf'))
             logging.info(f"\nEpisode Summary:")                                     #..........................................episode summary after training..........
             logging.info(f"Steps completed: {step_count}")
-            logging.info(f"Training performed: {training_performed}")
+            #logging.info(f"Training performed: {training_performed}")
             logging.info(f"Final makespan: {current_makespan}")
             logging.info(f"Total reward: {episode_reward}")
 
@@ -420,8 +420,8 @@ class Policy:
         self.feature_transformer = JSSPFeatureTransformer(config)
         
         # Initialize TM parameters
-        self.nr_of_clauses = min(config['nr_of_clauses'], 100)  # Reduce number of clauses
-        self.T = config.get('T', 15)  # Use get() with default value
+        self.nr_of_clauses = min(config['nr_of_clauses'], 1000)  # Reduce number of clauses
+        self.T = config.get('T', 1500)  # Use get() with default value
         self.s = config.get('s', 1.0)  # Use get() with default value
         
         logger.info(f"Policy initialized with sparse TM representation. Features: {self.feature_transformer.total_features}")
@@ -584,8 +584,8 @@ class JSSPFeatureTransformer:
         self.config = config
         
         # Basic dimensions
-        self.machine_time_bits = min(config['bits_per_machine_time'], 4)
-        self.job_status_bits = min(config['bits_per_job_status'], 2)
+        self.machine_time_bits = min(config['bits_per_machine_time'], 8)
+        self.job_status_bits = min(config['bits_per_job_status'], 4)
         self.n_machines = config['n_machines']
         self.n_jobs = config['n_jobs']
         
@@ -835,9 +835,9 @@ def set_seeds(seed: int = 42) -> None:
 def init_wandb(config: Dict[str, Any], instance_name: str) -> None:
     """Initialize Weights & Biases logging"""
     wandb.init(
-        project="job-shop-qtm_TM",
+        project="job-shop-qtm_MultiClassTsetlinMachine",
         entity="reshma-stha2016",  # Using your actual W&B username
-        name=f"QTM_New_{instance_name}_{time.strftime('%Y%m%d_%H%M%S')}",
+        name=f"QTM_{instance_name}_{time.strftime('%Y%m%d_%H%M%S')}",
         config={
             "algorithm": "QTM",
             "instance": instance_name,
@@ -945,11 +945,11 @@ def run_job_shop_scheduling(
             'obs_space_size': env.observation_space.shape[0],
             'gamma': 0.99,
             'epsilon_init': 1.0,
-            'epsilon_min': 0.01,
-            'epsilon_decay': 0.995,
-            'buffer_size': 10000,
-            'sample_size': 64,
-            'train_freq': 200,         #changed from 100 to 200
+            'epsilon_min': 0.05,
+            'epsilon_decay': 0.998,
+            'buffer_size': 5000,
+            'sample_size': 128,
+            'train_freq': 50,         #changed from 100 to 200
             'test_freq': 5,
             'save': True,
             'seed': seed
@@ -1113,7 +1113,7 @@ if __name__ == "__main__":
         # Run with default parameters
         results = run_job_shop_scheduling(
             instance_name="ta01.txt",
-            episodes=2,
+            episodes=1,
             num_clauses=2000,
             threshold=1500,
             specificity=1.5,
