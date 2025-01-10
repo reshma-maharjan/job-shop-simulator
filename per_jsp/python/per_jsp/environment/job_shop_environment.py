@@ -256,33 +256,53 @@ class JobShopEnvironment:
                     possible_actions.extend(self.action_lookup[job_id][op_id])
 
         return possible_actions
-
     def step(self, action: Action) -> State:
         """Execute an action and update the environment state."""
+        # Verify action validity before execution
+        if action.job not in self.dependencies.active_jobs:
+            raise ValueError(f"Invalid action: Job {action.job} is not active")
+
+        current_op = self.current_state.next_operation_for_job[action.job]
+        if action.operation != current_op:
+            raise ValueError(f"Invalid action: Expected operation {current_op} for job {action.job}, got {action.operation}")
+
         op = self.jobs[action.job].operations[action.operation]
+        if action.machine not in op.eligible_machines:
+            raise ValueError(f"Invalid action: Machine {action.machine} not eligible for job {action.job} operation {action.operation}")
+
+        # Calculate start time considering all constraints
         start_time = self.current_state.machine_availability[action.machine]
 
         # Consider job dependencies
         for dep_job in self.jobs[action.job].dependent_jobs:
             dep_job_last_op = len(self.jobs[dep_job].operations) - 1
-            start_time = max(start_time,
-                             self.current_state.job_progress[dep_job, dep_job_last_op])
+            dep_end_time = self.current_state.job_progress[dep_job, dep_job_last_op]
+            if dep_end_time == 0:  # Dependency not completed
+                raise ValueError(f"Invalid action: Dependent job {dep_job} not completed")
+            start_time = max(start_time, dep_end_time)
 
         # Check previous operation
         if action.operation > 0:
-            start_time = max(start_time,
-                             self.current_state.job_progress[action.job, action.operation - 1])
+            prev_end_time = self.current_state.job_progress[action.job, action.operation - 1]
+            if prev_end_time == 0:  # Previous operation not completed
+                raise ValueError(f"Invalid action: Previous operation {action.operation - 1} not completed")
+            start_time = max(start_time, prev_end_time)
 
         # Consider operation dependencies
         for dep_job, dep_op in op.dependent_operations:
-            start_time = max(start_time,
-                             self.current_state.job_progress[dep_job, dep_op])
+            dep_end_time = self.current_state.job_progress[dep_job, dep_op]
+            if dep_end_time == 0:  # Dependency not completed
+                raise ValueError(f"Invalid action: Dependent operation ({dep_job}, {dep_op}) not completed")
+            start_time = max(start_time, dep_end_time)
 
         # Update state
         end_time = start_time + op.duration
+
+        # Record job start time if this is the first operation
         if self.current_state.job_start_times[action.job] == -1:
             self.current_state.job_start_times[action.job] = start_time
 
+        # Update progress and machine availability
         self.current_state.job_progress[action.job, action.operation] = end_time
         self.current_state.machine_availability[action.machine] = end_time
 
@@ -299,13 +319,23 @@ class JobShopEnvironment:
                 self.dependencies.remove_completed_job(action.job)
                 self.dependencies.satisfy_job_dependency(action.job)
 
+        # Update total time and action history
         self.total_time = max(self.total_time, end_time)
         self.action_history.append(action)
 
         # Update ready states
         self._update_ready_states()
 
+        # Verify state consistency if in debug mode
+        if logger.getEffectiveLevel() <= logging.DEBUG:
+            errors = self.verify_state()
+            if errors:
+                logger.error("Environment verification failed after step:\n" + "\n".join(errors))
+                raise RuntimeError("Environment state verification failed")
+
         return self.current_state
+
+
 
     def reset(self):
         """Reset the environment to initial state."""
@@ -685,7 +715,131 @@ class JobShopEnvironment:
         return '\n'.join(legend_items)
 
 
+    def _verify_operation_sequence(self) -> List[str]:
+        """Verify that operations execute in correct sequence."""
+        errors = []
+        for job_id, job in enumerate(self.jobs):
+            for op_idx in range(1, len(job.operations)):
+                # Get current and previous operation end times
+                curr_end = self.current_state.job_progress[job_id, op_idx]
+                prev_end = self.current_state.job_progress[job_id, op_idx - 1]
 
+                # Skip if operations haven't been scheduled yet
+                if curr_end == 0:
+                    continue
+
+                # Previous operation must finish before current starts
+                curr_start = curr_end - job.operations[op_idx].duration
+                if curr_start < prev_end:
+                    errors.append(
+                        f"Operation sequence violated for Job {job_id}: "
+                        f"Op {op_idx} starts at {curr_start} before Op {op_idx-1} ends at {prev_end}"
+                    )
+        return errors
+
+    def _verify_machine_capacity(self) -> List[str]:
+        """Verify no machine overlap in the schedule."""
+        errors = []
+        for machine in range(self.num_machines):
+            # Get all operations on this machine
+            machine_ops = []
+            for action in self.action_history:
+                if action.machine == machine:
+                    op = self.jobs[action.job].operations[action.operation]
+                    end_time = self.current_state.job_progress[action.job, action.operation]
+                    start_time = end_time - op.duration
+                    machine_ops.append((start_time, end_time, action.job, action.operation))
+
+            # Sort by start time
+            machine_ops.sort()
+
+            # Check for overlaps
+            for i in range(1, len(machine_ops)):
+                curr_start = machine_ops[i][0]
+                prev_end = machine_ops[i-1][1]
+                if curr_start < prev_end:
+                    errors.append(
+                        f"Machine capacity violated on Machine {machine}: "
+                        f"Job {machine_ops[i][2]} Op {machine_ops[i][3]} starts at {curr_start} "
+                        f"before Job {machine_ops[i-1][2]} Op {machine_ops[i-1][3]} ends at {prev_end}"
+                    )
+        return errors
+
+    def _verify_dependencies(self) -> List[str]:
+        """Verify all operation dependencies are respected."""
+        errors = []
+        for job_id, job in enumerate(self.jobs):
+            for op_idx, op in enumerate(job.operations):
+                end_time = self.current_state.job_progress[job_id, op_idx]
+                # Skip if operation hasn't been scheduled yet
+                if end_time == 0:
+                    continue
+
+                start_time = end_time - op.duration
+
+                # Check operation dependencies
+                for dep_job, dep_op in op.dependent_operations:
+                    dep_end = self.current_state.job_progress[dep_job, dep_op]
+                    if start_time < dep_end:
+                        errors.append(
+                            f"Dependency violated: Job {job_id} Op {op_idx} starts at {start_time} "
+                            f"before dependent Job {dep_job} Op {dep_op} ends at {dep_end}"
+                        )
+        return errors
+
+    def _verify_state_consistency(self) -> List[str]:
+        """Verify the environment's state is consistent."""
+        errors = []
+
+        # Verify next_operation_for_job
+        for job_id in range(len(self.jobs)):
+            next_op = self.current_state.next_operation_for_job[job_id]
+            if next_op > 0:
+                # All previous operations should be completed
+                for op_idx in range(next_op):
+                    if self.current_state.job_progress[job_id, op_idx] == 0:
+                        errors.append(
+                            f"State inconsistency: Job {job_id} next_op is {next_op} "
+                            f"but operation {op_idx} is not completed"
+                        )
+
+        # Verify completed_jobs
+        for job_id in range(len(self.jobs)):
+            if self.current_state.completed_jobs[job_id]:
+                # All operations should be completed
+                for op_idx in range(len(self.jobs[job_id].operations)):
+                    if self.current_state.job_progress[job_id, op_idx] == 0:
+                        errors.append(
+                            f"State inconsistency: Job {job_id} marked complete "
+                            f"but operation {op_idx} is not completed"
+                        )
+
+        # Verify machine_availability
+        for machine in range(self.num_machines):
+            last_end_time = 0
+            for action in self.action_history:
+                if action.machine == machine:
+                    end_time = self.current_state.job_progress[action.job, action.operation]
+                    if end_time > last_end_time:
+                        last_end_time = end_time
+
+            if self.current_state.machine_availability[machine] != last_end_time:
+                errors.append(
+                    f"State inconsistency: Machine {machine} availability is "
+                    f"{self.current_state.machine_availability[machine]} but last operation "
+                    f"ends at {last_end_time}"
+                )
+
+        return errors
+
+    def verify_state(self) -> List[str]:
+        """Run all state verifications."""
+        errors = []
+        errors.extend(self._verify_operation_sequence())
+        errors.extend(self._verify_machine_capacity())
+        errors.extend(self._verify_dependencies())
+        errors.extend(self._verify_state_consistency())
+        return errors
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -698,6 +852,10 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return super().default(obj)
+
+
+
+
 
 # Example usage
 if __name__ == "__main__":

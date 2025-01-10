@@ -3,7 +3,6 @@
 Main entry point for the Job Shop Scheduling System.
 Handles problem generation, solving, and result visualization.
 """
-
 import logging
 import argparse
 import json
@@ -233,11 +232,11 @@ def create_scheduler(args) -> BaseScheduler:
     if args.algorithm == "greedy":
         return GreedyScheduler(use_longest=args.use_longest)
     elif args.algorithm == "q-learning":
-        return QLearningScheduler(
-            learning_rate=args.learning_rate,
-            discount_factor=args.discount_factor,
-            epsilon=args.epsilon,
-            episodes=args.episodes
+        return  QLearningScheduler(
+            learning_rate=0.1,
+            discount_factor=0.95,
+            exploration_rate=1.0,
+            episodes=1000
         )
     else:
         raise ValueError(f"Unknown algorithm: {args.algorithm}")
@@ -267,7 +266,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
                         help="Discount factor for Q-learning")
     parser.add_argument("--epsilon", type=float, default=0.1,
                         help="Exploration rate for Q-learning")
-    parser.add_argument("--episodes", type=int, default=10000,
+    parser.add_argument("--episodes", type=int, default=1000,
                         help="Number of episodes for Q-learning")
 
     # Automatic generation parameters
