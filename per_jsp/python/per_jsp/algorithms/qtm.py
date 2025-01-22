@@ -64,12 +64,11 @@ class HybridTsetlinQLearningScheduler:
         try:
             if action_id not in self.tsetlin_machines:
 
-                n_classes = 2  # Binary classification
-
                 tm = MultiClassTsetlinMachine(
                     self.nr_clauses,
                     self.T,
                     self.s,
+                    number_of_classes=2,
                 )
                 
                 self.tsetlin_machines[action_id] = tm
@@ -82,24 +81,61 @@ class HybridTsetlinQLearningScheduler:
             raise
 
     def _calculate_priority(self, env, action) -> float:
-        """Calculate priority score combining Q-value and TM prediction."""
+        """Calculate priority score combining Q-value, TM prediction, and heuristic factors."""
         # Get Q-value
         q_value = self.q_table[action.job, action.machine, action.operation]
         
         # Get TM prediction
         state_features = self.feature_transformer.transform(env.current_state)
         tm = self._get_or_create_tm(action.job * env.num_machines + action.machine)
-        
-        #added
-        # First fit with some initial data before predicting
-       # tm.fit(state_features.reshape(1, -1), np.array([0]), epochs=1)  # Initial fit       
-        
         tm_prediction = tm.predict(state_features.reshape(1, -1))[0]
         
-        # Combine Q-value and TM prediction
-        priority = 0.7 * q_value + 0.3 * tm_prediction
+        # Calculate heuristic components
+        remaining_time = sum(
+            op.duration
+            for op in env.jobs[action.job].operations[action.operation:]
+        )
+        
+        # Calculate machine utilization
+        machine_time = env.current_state.machine_availability[action.machine]
+        total_time = max(1, env.total_time)
+        machine_utilization = machine_time / total_time
+        
+        # Calculate heuristic priority
+        heuristic_priority = remaining_time * (1 - machine_utilization)
+        
+        # Normalize heuristic priority to be in a similar range as Q-values
+        max_possible_remaining_time = sum(op.duration for job in env.jobs for op in job.operations)
+        normalized_heuristic = heuristic_priority / max_possible_remaining_time
+        
+        # Combine all three components with weights
+        priority = (
+            0.4 * q_value +           # Learning component
+            0.3 * tm_prediction +     # Temporal memory component
+            0.3 * normalized_heuristic  # Heuristic component
+        )
         
         return priority
+
+
+    #     """Calculate priority score combining Q-value and TM prediction."""
+    #     # Get Q-value
+    #     q_value = self.q_table[action.job, action.machine, action.operation]
+        
+    #     # Get TM prediction
+    #     state_features = self.feature_transformer.transform(env.current_state)
+    #     tm = self._get_or_create_tm(action.job * env.num_machines + action.machine)
+        
+    #     #added
+    #     # First fit with some initial data before predicting
+    #    # tm.fit(state_features.reshape(1, -1), np.array([0]), epochs=1)  # Initial fit       
+        
+    #     tm_prediction = tm.predict(state_features.reshape(1, -1))[0]
+        
+    #     # Combine Q-value and TM prediction
+    #     priority = 0.7 * q_value + 0.3 * tm_prediction
+        
+    #     return priority
 
     def _select_action(self, env) -> Any:
         """Select action with improved validation and debugging."""
@@ -142,16 +178,31 @@ class HybridTsetlinQLearningScheduler:
             # Greedy selection
             best_action = None
             best_priority = float('-inf')
-            
+
             for action in possible_actions:
                 try:
+                    logging.debug(f"Attempting to calculate priority for action: {action}")
                     priority = self._calculate_priority(env, action)
+                    logging.debug(f"Calculated priority: {priority}")
                     if priority > best_priority:
                         best_priority = priority
                         best_action = action
+                        logging.debug(f"New best action found: {best_action} with priority {best_priority}")
                 except Exception as e:
-                    logging.warning(f"Error in greedy selection: {e}")
+                    logging.warning(f"Error in greedy selection for action {action}: {e}")
+                    # Print full stack trace
+                    logging.error("Full traceback:", exc_info=True)
                     continue
+            
+            # for action in possible_actions:
+            #     try:
+            #         priority = self._calculate_priority(env, action)
+            #         if priority > best_priority:
+            #             best_priority = priority
+            #             best_action = action
+            #     except Exception as e:
+            #         logging.warning(f"Error in greedy selection: {e}")
+            #         continue
             
             if best_action is None:
                 logging.warning("No valid action found in greedy selection")
@@ -318,7 +369,7 @@ class HybridTsetlinQLearningScheduler:
         best_makespan = float('inf')
         
         for episode in range(self.episodes):
-            logging.info(f"Starting episode {episode + 1}/{self.episodes}")
+            logging.info(f"*****************\n*************************\n\n\nStarting episode {episode + 1}/{self.episodes}")
             
             # Run episode
             episode_actions = self._run_episode(env, max_steps)
