@@ -17,14 +17,17 @@ class HybridTsetlinQLearningScheduler:
                  discount_factor: float = 0.95,
                  exploration_rate: float = 1.0,
                  episodes: int = 1000,
-                 nr_clauses: int = 2000,
-                 T: float = 1500,
-                 s: float = 1.5):
+                 nr_clauses: int = 2000, #2000
+                 T: float = 1500, # 1500
+                 s: float = 1.5, # 1.5
+                 optimal_makespan: int = None):
+        
         # Q-learning parameters
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
         self.exploration_rate = exploration_rate
         self.episodes = episodes
+        self.optimal_makespan = optimal_makespan
         
         # Tsetlin Machine parameters
         self.nr_clauses = nr_clauses
@@ -81,16 +84,19 @@ class HybridTsetlinQLearningScheduler:
             raise
 
     def _calculate_priority(self, env, action) -> float:
-        """Calculate priority score combining Q-value, TM prediction, and heuristic factors."""
-        # Get Q-value
-        q_value = self.q_table[action.job, action.machine, action.operation]
+
+        """Calculate priority score using Tsetlin Machine prediction and scheduling factors."""
+        # Get state features for TM
+        state_features = self.feature_transformer.transform(env.current_state)
+        
+        # Get or create TM for this job-machine combination
+        tm_index = action.job * env.num_machines + action.machine
+        tm = self._get_or_create_tm(tm_index)
         
         # Get TM prediction
-        state_features = self.feature_transformer.transform(env.current_state)
-        tm = self._get_or_create_tm(action.job * env.num_machines + action.machine)
         tm_prediction = tm.predict(state_features.reshape(1, -1))[0]
         
-        # Calculate heuristic components
+        # Calculate remaining time
         remaining_time = sum(
             op.duration
             for op in env.jobs[action.job].operations[action.operation:]
@@ -101,41 +107,13 @@ class HybridTsetlinQLearningScheduler:
         total_time = max(1, env.total_time)
         machine_utilization = machine_time / total_time
         
-        # Calculate heuristic priority
-        heuristic_priority = remaining_time * (1 - machine_utilization)
+        # Basic scheduling priority
+        scheduling_priority = remaining_time * (1 - machine_utilization)
         
-        # Normalize heuristic priority to be in a similar range as Q-values
-        max_possible_remaining_time = sum(op.duration for job in env.jobs for op in job.operations)
-        normalized_heuristic = heuristic_priority / max_possible_remaining_time
+        # Combine TM prediction with scheduling priority (weighted sum)
+        final_priority = 0.7 * scheduling_priority + 0.3 * tm_prediction
         
-        # Combine all three components with weights
-        priority = (
-            0.4 * q_value +           # Learning component
-            0.3 * tm_prediction +     # Temporal memory component
-            0.3 * normalized_heuristic  # Heuristic component
-        )
-        
-        return priority
-
-
-    #     """Calculate priority score combining Q-value and TM prediction."""
-    #     # Get Q-value
-    #     q_value = self.q_table[action.job, action.machine, action.operation]
-        
-    #     # Get TM prediction
-    #     state_features = self.feature_transformer.transform(env.current_state)
-    #     tm = self._get_or_create_tm(action.job * env.num_machines + action.machine)
-        
-    #     #added
-    #     # First fit with some initial data before predicting
-    #    # tm.fit(state_features.reshape(1, -1), np.array([0]), epochs=1)  # Initial fit       
-        
-    #     tm_prediction = tm.predict(state_features.reshape(1, -1))[0]
-        
-    #     # Combine Q-value and TM prediction
-    #     priority = 0.7 * q_value + 0.3 * tm_prediction
-        
-    #     return priority
+        return final_priority
 
     def _select_action(self, env) -> Any:
         """Select action with improved validation and debugging."""
@@ -181,28 +159,13 @@ class HybridTsetlinQLearningScheduler:
 
             for action in possible_actions:
                 try:
-                    logging.debug(f"Attempting to calculate priority for action: {action}")
                     priority = self._calculate_priority(env, action)
-                    logging.debug(f"Calculated priority: {priority}")
                     if priority > best_priority:
                         best_priority = priority
                         best_action = action
-                        logging.debug(f"New best action found: {best_action} with priority {best_priority}")
                 except Exception as e:
-                    logging.warning(f"Error in greedy selection for action {action}: {e}")
-                    # Print full stack trace
-                    logging.error("Full traceback:", exc_info=True)
+                    logging.warning(f"Error in greedy selection: {e}")
                     continue
-            
-            # for action in possible_actions:
-            #     try:
-            #         priority = self._calculate_priority(env, action)
-            #         if priority > best_priority:
-            #             best_priority = priority
-            #             best_action = action
-            #     except Exception as e:
-            #         logging.warning(f"Error in greedy selection: {e}")
-            #         continue
             
             if best_action is None:
                 logging.warning("No valid action found in greedy selection")
@@ -216,129 +179,56 @@ class HybridTsetlinQLearningScheduler:
                 return possible_actions[0]
             return None
     
-    def _update_models(self, env, action, prev_time: int) -> None:
-        """Update both Q-table and Tsetlin Machine based on action results."""
-        # try:
-        # Calculate rewards
-        time_reward = -(env.total_time - prev_time)
-        utils = env.get_machine_utilization()
-        util_reward = np.mean(utils) * 100
+    def _update_models(self, env, action, prev_time):
+        try:
+            # Calculate rewards based on time and utilization
+            time_reward = -(env.total_time - prev_time)
+            utils = env.get_machine_utilization()
+            util_reward = np.mean(utils) * 10
 
-        # Combine rewards
-        combined_reward = time_reward + util_reward
-    
-        # Update Q-value
-        possible_actions = env.get_possible_actions()
-        max_future_q = 0.0
+            # Combined reward focusing on minimizing time 
+            combined_reward = 0.8 * time_reward + 0.2 * util_reward
+            scaled_reward = combined_reward * 100
 
-        if possible_actions:
+            # Get future Q-values and update Q-table
+            possible_actions = env.get_possible_actions()
             future_q_values = []
-            for a in possible_actions:
-                if (a.job < self.q_table.shape[0] and
-                    a.machine < self.q_table.shape[1] and
-                    a.operation < self.q_table.shape[2]):
-                    future_q_values.append(self.q_table[a.job, a.machine, a.operation])
-            if future_q_values:
-                max_future_q = max(future_q_values)
 
-        #safety update Q-table  
-        if (0 <= action.job < self.q_table.shape[0] and
-            0 <= action.machine < self.q_table.shape[1] and
-            0 <= action.operation < self.q_table.shape[2]):
+            for a in possible_actions:
+                if self._is_valid_action(a):
+                    future_q_values.append(
+                        self.q_table[a.job, a.machine, a.operation]
+                    )
+
+            max_future_q = max(future_q_values) if future_q_values else 0.0
             current_q = self.q_table[action.job, action.machine, action.operation]
-            new_q = (1 - self.learning_rate) * current_q + self.learning_rate * (
-                    combined_reward + self.discount_factor * max_future_q
+            
+            new_q = current_q + self.learning_rate * (
+                scaled_reward + self.discount_factor * max_future_q - current_q
             )
+            
             self.q_table[action.job, action.machine, action.operation] = new_q
 
+            # Update TM
+            state_features = self.feature_transformer.transform(env.current_state)
+            action_tm = self._get_or_create_tm(action.job * env.num_machines + action.machine)
+            tm_class = 1 if new_q > current_q else 0
+            
+            features_reshaped = state_features.reshape(1, -1)
+            action_tm.fit(features_reshaped, np.array([tm_class]), epochs=100)
 
-        # Update Tsetlin Machine
-        state_features = self.feature_transformer.transform(env.current_state)
-        print(f"Transformed features shape............: {state_features.shape}")
-        if state_features.shape[0] != self.feature_transformer.total_features:
-            raise ValueError(f"Feature shape mismatch: {state_features.shape[0]}")
+        except Exception as e:
+            logging.error(f"Error in model updates: {e}")
+            raise
 
-        action_tm = self._get_or_create_tm(action.job * env.num_machines + action.machine)
-        print(f"TM input shape..........: {state_features.reshape(1, -1).shape}")
+    def _is_valid_action(self, action):
+        return (action.job < self.q_table.shape[0] and
+                action.machine < self.q_table.shape[1] and 
+                action.operation < self.q_table.shape[2])
 
-        # Convert reward to binary class (1 for positive reward, 0 for negative)
-        tm_class = 1 if combined_reward > 0 else 0
-
-        # Ensure feature array is properly shaped
-        features_reshaped = state_features.reshape(1, -1)
-
-        action_tm.fit(features_reshaped, np.array([tm_class]), epochs=10)
-        print(f"--------------------------------\n\nTM updated for action {action.job}x{action.machine}")
-       
 
     def _run_episode(self, env, max_steps: int = 1000) -> List[Any]:
         """Run a single episode with enhanced state tracking."""
-        # env.reset()
-        # episode_actions = []
-        # step = 0
-        
-        # logging.info(f"Starting new episode. Jobs to complete: {len(env.jobs)}")
-        
-        # while not env.is_done() and step < max_steps:
-            # # Get current state information
-            # completed_jobs = sum(1 for job in range(len(env.jobs)) 
-            #                 if all(env.current_state.job_progress[job]))
-            # remaining_jobs = len(env.jobs) - completed_jobs
-            
-            # logging.info(f"Step {step}: Completed jobs: {completed_jobs}/{len(env.jobs)}")
-            # logging.info(f"Remaining jobs: {remaining_jobs}")
-            
-            # # Get valid actions with detailed validation
-            # possible_actions = env.get_possible_actions()
-            # print(f"Possible actions: {len(possible_actions)}")
-            # print(possible_actions)
-
-            # if not possible_actions:
-            #     logging.warning(f"No possible actions at step {step}. Analyzing state:")
-            #     logging.warning(f"Machine availability: {env.current_state.machine_availability}")
-            #     logging.warning(f"Job progress: {env.current_state.job_progress}")
-                
-            #     # Check if there are actually no more valid actions
-            #     all_jobs_done = all(all(progress) for progress in env.current_state.job_progress)
-            #     if not all_jobs_done:
-            #         logging.error("No actions available but jobs remain incomplete!")
-            #         # Try to find why no actions are available
-            #         for job_idx, job_progress in enumerate(env.current_state.job_progress):
-            #             if not all(job_progress):
-            #                 logging.error(f"Job {job_idx} incomplete: {job_progress}")
-            #     break
-            
-
-
-        #     # Select and execute action
-        #     try:
-        #         action = self._select_action(env)
-        #         if action is None:
-        #             logging.error("Action selection returned None despite having possible actions")
-        #             break
-                
-        #         # Log action details
-        #         logging.info(f"Selected action - Job: {action.job}, Machine: {action.machine}, "
-        #                     f"Operation: {action.operation}")
-                
-        #         # Execute action
-        #         env.step(action)
-        #         episode_actions.append(action)
-                
-        #         # Update models
-        #         prev_time = env.total_time
-        #         self._update_models(env, action, prev_time)
-                
-        #     except Exception as e:
-        #         logging.error(f"Error in episode step {step}: {str(e)}")
-        #         raise
-                
-        #     step += 1
-            
-        # logging.info(f"Episode completed. Total actions: {len(episode_actions)}")
-        # logging.info(f"Final state - Completed jobs: {completed_jobs}/{len(env.jobs)}")
-        # return episode_actions
-
         env.reset()
         episode_actions = []
 
@@ -369,31 +259,31 @@ class HybridTsetlinQLearningScheduler:
         best_makespan = float('inf')
         
         for episode in range(self.episodes):
-            logging.info(f"*****************\n*************************\n\n\nStarting episode {episode + 1}/{self.episodes}")
             
             # Run episode
             episode_actions = self._run_episode(env, max_steps)
-            print (f"Episode actions****: {episode_actions}")
             
             # Verify solution
             env.reset()
+            
             for action in episode_actions:
                 env.step(action)
                 
             # Check completion
             completed_jobs = sum(1 for job in range(len(env.jobs)) 
                             if all(env.current_state.job_progress[job]))
-                            
-            logging.info(f"Episode {episode + 1} completed {completed_jobs}/{len(env.jobs)} jobs")
             
             # Update best solution if better
             if completed_jobs == len(env.jobs) and env.total_time < best_makespan:
                 best_makespan = env.total_time
                 best_episode_actions = episode_actions.copy()
-                logging.info(f"New best solution found! Makespan: {best_makespan}\n***********\n***********\n ***********")
+                logging.info(f"New best solution found! Makespan: {best_makespan}\n")
                 
-            # Decay exploration
-            self.exploration_rate = max(0.01, self.exploration_rate * 0.995)
+            # Decay exploration rate
+            self.exploration_rate = max(0.01, self.exploration_rate * 0.999)
+
+            if (episode + 1) % 10 == 0:
+                logging.info(f"Episode {episode + 1}/{self.episodes}, Best makespan: {best_makespan}")
             
         if best_episode_actions is None:
             logging.error("No complete solution found!")
@@ -452,9 +342,6 @@ class JSSPFeatureTransformer:
     def _log_initialization(self):
         """Log initialization details"""
         print(f"Feature transformer initialized:")
-        # print(f"- Problem size: {self.n_jobs}x{self.n_machines}")
-        # print(f"- Total features: {self.total_features}")
-        # print(f"- Feature composition:")
         print(f"  ****Machine times: {self.n_machines} machines × {self.machine_time_bits} bits = {self.machine_times_size}")
         print(f"  ***Job status: {self.n_jobs} jobs × {self.job_status_bits} bits = {self.job_status_size}")
         #print(f"  ***Operation status: {self.n_jobs} jobs × {self.n_machines} = {self.op_status_size}")
@@ -466,21 +353,14 @@ class JSSPFeatureTransformer:
         Transform JSSP state into binary features.
         """
         try:
-           # print(f"Incoming state attributes: {dir(state)}")  # Debug state structure
-            #print(f"Machine availability: {state.machine_availability}")
-            #print(f"Job progress length: {len(state.job_progress)}")
             
             binary_features = np.zeros(self.total_features, dtype=np.int32)
             current_idx = 0
 
             # Debug machine times processing
             machine_times = state.machine_availability
-            print(f"Machine times: {machine_times}")
             max_time = np.max(machine_times) if np.max(machine_times) > 0 else 1
             normalized_times = (machine_times / max_time * (2**self.machine_time_bits - 1)).astype(int)
-            print(f"Normalized times: {normalized_times}")
-       
-            
         
             for machine_idx in range(len(normalized_times)):
                 time = normalized_times[machine_idx]
@@ -490,9 +370,6 @@ class JSSPFeatureTransformer:
                     if current_idx < self.machine_times_size:
                         binary_features[current_idx] = int(bit)
                         current_idx += 1
-
-            
-            #print(f"Processing machines: {len(state.machine_availability)} machines")
             
             # 2. Process job progress
             job_progress = state.job_progress
@@ -512,8 +389,6 @@ class JSSPFeatureTransformer:
                     if current_idx < self.machine_times_size + self.job_status_size:
                         binary_features[current_idx] = int(bit)
                         current_idx += 1
-
-            #print(f"Processing jobs: {len(state.job_progress)} jobs")
 
             # 3. Process operation status matrix
             for job_idx in range(self.n_jobs):
@@ -541,7 +416,7 @@ class JSSPFeatureTransformer:
                             binary_features[current_idx] = 0
                             current_idx += 1
 
-            print(f"Final feature count: {current_idx} / {self.total_features}")
+            #print(f"Final feature count: {current_idx} / {self.total_features}")
             
             return binary_features
         
