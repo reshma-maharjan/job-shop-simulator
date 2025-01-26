@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Main entry point for the Job Shop Scheduling System.
 Handles problem generation, solving, and result visualization.
@@ -345,6 +344,10 @@ def main() -> int:
     """Main entry point for the job shop scheduling system."""
     parser = setup_argument_parser()
     args = parser.parse_args()
+
+     # Create output directory
+    output_dir = Path("output")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Set random seed if specified
     if args.seed is not None:
