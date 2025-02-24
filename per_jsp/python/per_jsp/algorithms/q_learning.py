@@ -1,5 +1,6 @@
 import numpy as np
-import time
+import random
+from typing import List, Tuple, Callable
 import logging
 import random
 from typing import List, Tuple, Callable
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 from per_jsp.python.per_jsp.algorithms.base import BaseScheduler
 from per_jsp.python.per_jsp.environment.job_shop_environment import JobShopEnvironment, Action
 from per_jsp.python.per_jsp.environment.job_shop_taillard_generator import TaillardJobShopGenerator
+
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,10 @@ class QLearningScheduler(BaseScheduler):
 
     def _calculate_priority(self, env: JobShopEnvironment, action: Action) -> float:
         """Calculate priority score for an action."""
+<<<<<<< HEAD
+=======
+        # Calculate remaining processing time for the job
+>>>>>>> upstream/main
         remaining_time = sum(
             op.duration
             for op in env.jobs[action.job].operations[action.operation:]
@@ -95,7 +101,10 @@ class QLearningScheduler(BaseScheduler):
         # Get maximum future Q-value
         possible_actions = env.get_possible_actions()
         max_future_q = 0.0
+<<<<<<< HEAD
         
+=======
+>>>>>>> upstream/main
         if possible_actions:
             max_future_q = max(
                 self.q_table[a.job, a.machine, a.operation]
@@ -144,7 +153,10 @@ class QLearningScheduler(BaseScheduler):
 
             # Evaluate episode
             env.reset()
+<<<<<<< HEAD
             
+=======
+>>>>>>> upstream/main
             for action in episode_actions:
                 env.step(action)
 

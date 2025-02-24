@@ -3,7 +3,6 @@
 Main entry point for the Job Shop Scheduling System.
 Handles problem generation, solving, and result visualization.
 """
-
 import logging
 import argparse
 import json
