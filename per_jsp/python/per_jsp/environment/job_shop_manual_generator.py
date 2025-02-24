@@ -4,7 +4,7 @@ import logging
 import json
 from collections import defaultdict, deque
 
-from per_jsp.environment.job_shop_environment import Operation, Job
+from per_jsp.python.per_jsp.environment.job_shop_environment import Operation, Job
 
 logger = logging.getLogger(__name__)
 

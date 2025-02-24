@@ -210,6 +210,8 @@ class QTMAgent:
         while True:
             # Select and execute action
             action = self.get_next_action(cur_obs)
+           
+
             next_obs, reward, terminated, truncated, info = self.env.step(action)
             
             # Calculate custom reward
@@ -694,7 +696,7 @@ def set_seeds(seed: int = 42) -> None:
 def init_wandb(config: Dict[str, Any], instance_name: str) -> None:
     """Initialize Weights & Biases logging"""
     wandb.init(
-        project="job-shop-qtm_server",
+        project="job-shop-qtm",
         entity="reshma-stha2016",  # Using your actual W&B username
         name=f"QTM_{instance_name}_{time.strftime('%Y%m%d_%H%M%S')}",
         config={
@@ -718,30 +720,6 @@ def init_wandb(config: Dict[str, Any], instance_name: str) -> None:
         },
         tags=["QTM", instance_name, "job-shop"]
     )
-
-def get_default_config(env) -> Dict[str, Any]:
-    """Get default configuration for the QTM agent"""
-    return {
-        'env_name': 'job-shop',
-        'algorithm': 'QTM',
-        'nr_of_clauses': 2000,           # Number of clauses per TM
-        'T': 1500,                       # Threshold
-        's': 1.5,                        # Specificity
-        'bits_per_machine_time': 8,      # Bits for encoding machine times
-        'bits_per_job_status': 4,        # Bits for encoding job status
-        'n_jobs': len(env.unwrapped.jobs),         # Number of jobs
-        'n_machines': env.unwarpped.num_machines,  # Number of machines
-        'gamma': 0.99,                   # Discount factor
-        'epsilon_init': 1.0,             # Initial exploration
-        'epsilon_min': 0.01,             # Minimum exploration
-        'epsilon_decay': 0.995,          # Exploration decay rate
-        'buffer_size': 10000,            # Experience replay buffer size
-        'sample_size': 64,               # Batch size
-        'train_freq': 100,               # Training frequency
-        'test_freq': 5,                  # Testing frequency
-        'save': True,                    # Save results
-        'seed': 42                       # Random seed
-    }
 
 def save_results(result_file: Path, results: Dict[str, Any]) -> None:
     """Save results to file"""
@@ -770,7 +748,6 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
         return super().default(obj)
-
 
 def main():
     parser = argparse.ArgumentParser(description='Job Shop Scheduling with QTM')

@@ -12,21 +12,21 @@ import random
 import numpy as np
 from typing import List, Tuple, Any, Dict, Optional
 
-from per_jsp.environment.job_shop_environment import (
+from per_jsp.python.per_jsp.environment.job_shop_environment import (
     JobShopEnvironment,
     Action,
     ScheduleEntry,
     Job,
 )
-from per_jsp.environment.job_shop_taillard_generator import TaillardJobShopGenerator
-from per_jsp.environment.job_shop_manual_generator import ManualJobShopGenerator
-from per_jsp.environment.job_shop_automatic_generator import AutomaticJobShopGenerator
-from per_jsp.environment.structs import GenerationParams
+from per_jsp.python.per_jsp.environment.job_shop_taillard_generator import TaillardJobShopGenerator
+from per_jsp.python.per_jsp.environment.job_shop_manual_generator import ManualJobShopGenerator
+from per_jsp.python.per_jsp.environment.job_shop_automatic_generator import AutomaticJobShopGenerator
+from per_jsp.python.per_jsp.environment.structs import GenerationParams
 
 # Import algorithms
-from per_jsp.algorithms.base import BaseScheduler
-from per_jsp.algorithms.greedy import GreedyScheduler
-from per_jsp.algorithms.q_learning import QLearningScheduler
+from per_jsp.python.per_jsp.algorithms.base import BaseScheduler
+from per_jsp.python.per_jsp.algorithms.greedy import GreedyScheduler
+from per_jsp.python.per_jsp.algorithms.q_learning import QLearningScheduler
 
 # Configure logging
 logging.basicConfig(
@@ -234,11 +234,11 @@ def create_scheduler(args) -> BaseScheduler:
     if args.algorithm == "greedy":
         return GreedyScheduler(use_longest=args.use_longest)
     elif args.algorithm == "q-learning":
-        return QLearningScheduler(
-            learning_rate=args.learning_rate,
-            discount_factor=args.discount_factor,
-            epsilon=args.epsilon,
-            episodes=args.episodes
+        return  QLearningScheduler(
+            learning_rate=0.1,
+            discount_factor=0.95,
+            exploration_rate=1.0,
+            episodes=1000
         )
     else:
         raise ValueError(f"Unknown algorithm: {args.algorithm}")
@@ -268,7 +268,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
                         help="Discount factor for Q-learning")
     parser.add_argument("--epsilon", type=float, default=0.1,
                         help="Exploration rate for Q-learning")
-    parser.add_argument("--episodes", type=int, default=10000,
+    parser.add_argument("--episodes", type=int, default=1000,
                         help="Number of episodes for Q-learning")
 
     # Automatic generation parameters

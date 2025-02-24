@@ -1,0 +1,52 @@
+// {
+   
+//     // Use IntelliSense to learn about possible attributes.
+//     // Hover to view descriptions of existing attributes.
+//     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python Debugger: main_tm.py",
+//             "type": "python",
+//             "request": "launch",
+//             "program": "${workspaceFolder}/main_tm.py",
+//             "console": "integratedTerminal",
+//             "args": [
+//                 "--manual",
+//                 "--input-json",
+//                 "/workspaces/job-shop-simulator/per_jsp/data/problem_instances/doris.json",
+//                 "--algorithm",
+//                 "tsetlin",
+//                 "--visualize",
+//                 "--output-prefix",
+//                 "doris_tm_100",
+//                 "--episodes",
+//                 "100"
+//             ]
+//         }
+//     ]
+// }
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--taillard",
+                "--taillard-file",
+                "/workspaces/job-shop-simulator/per_jsp/data/taillard_instances/ta01.txt",
+                "--algorithm",
+                "tsetlin",
+                "--visualize",
+                "--output-prefix",
+                "ta01_tm_episode_10",
+                "--episodes=10"
+            ]
+        }
+    ]
+}

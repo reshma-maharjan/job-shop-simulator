@@ -1,0 +1,23 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+            "--manual",
+            "--input-json", "/workspaces/job-shop-simulator/per_jsp/data/problem_instances/doris.json",
+            "--algorithm", "tsetlin",
+            "--visualize",
+            "--output-prefix", "doris_tm_episodes_1", 
+            "--episodes", "100"
+            ]
+        }
+    ]
+}

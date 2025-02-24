@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--manual",
+                "--input-json", "/workspaces/job-shop-simulator/per_jsp/data/problem_instances/doris.json",
+                "--algorithm",
+                "ppo",
+                "--visualize",
+                "--output-prefix",
+                "ppo_doris_final",
+                "--episodes=1000"
+            ]
+        }
+    ]
+}

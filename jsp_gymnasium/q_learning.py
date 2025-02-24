@@ -208,8 +208,6 @@ def setup_result_directory(instance_name: str) -> Path:
     
     return result_file
 
-# Then update the main function:
-
 def main():
     parser = argparse.ArgumentParser(description='Job Shop Scheduling with Q-Learning (Gymnasium)')
     

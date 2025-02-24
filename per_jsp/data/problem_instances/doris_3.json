@@ -1,0 +1,42 @@
+{
+    "metadata": {
+      "numJobs": 5,
+      "numMachines": 2
+    },
+    "jobs": [
+      {
+        "id": 0,
+        "duration": 30,
+        "machine": 0,
+        "dependencies": []
+      },
+      {
+        "id": 1,
+        "duration": 45,
+        "machine": 1,
+        "dependencies": [0]
+      },
+      {
+        "id": 2,
+        "duration": 25,
+        "machine": 0,
+        "dependencies": [1]
+      },
+      {
+        "id": 3,
+        "duration": 35,
+        "machine": 1,
+        "dependencies": [2]
+      },
+      {
+        "id": 4,
+        "duration": 20,
+        "machine": 0,
+        "dependencies": [3]
+      }
+    ],
+    "operationDependencies": {
+      "comment": "Operation dependencies can be added here if needed",
+      "dependencies": []
+    }
+  }

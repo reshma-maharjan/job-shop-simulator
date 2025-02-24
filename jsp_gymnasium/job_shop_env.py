@@ -1,5 +1,3 @@
-# job_shop_env.py
-
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
@@ -49,13 +47,33 @@ class State:
 
     @classmethod
     def create(cls, num_jobs: int, num_machines: int, max_operations: int):
+        """
+        Create initial state with appropriate dtypes for internal state tracking.
+        Using int32 for discrete values and bool for flags, while ensuring
+        observation conversion to float32 is handled in get_observation.
+        """
         return cls(
+            # Keep int32 for internal state tracking
             job_progress=np.zeros((num_jobs, max_operations), dtype=np.int32),
             machine_availability=np.zeros(num_machines, dtype=np.int32),
             next_operation_for_job=np.zeros(num_jobs, dtype=np.int32),
             completed_jobs=np.zeros(num_jobs, dtype=bool),
             job_start_times=np.full(num_jobs, -1, dtype=np.int32)
         )
+    
+    def get_observation(self) -> np.ndarray:
+        """
+        Convert internal state to observation with correct dtype for gym environment.
+        Returns:
+            np.ndarray: Observation vector with dtype float32
+        """
+        return np.concatenate([
+            self.job_progress.flatten().astype(np.float32),
+            self.machine_availability.astype(np.float32),
+            self.next_operation_for_job.astype(np.float32),
+            self.completed_jobs.astype(np.float32),
+            self.job_start_times.astype(np.float32)
+        ])
 
 class Dependencies:
     def __init__(self, num_jobs: int):
@@ -110,6 +128,31 @@ class Dependencies:
         if job_id in self.active_operations:
             del self.active_operations[job_id]
 
+    def validate_dependencies(self) -> bool:
+        # Check for circular job dependencies
+        def has_job_cycle(job_id: int, visited: Set[int], path: Set[int]) -> bool:
+            if job_id in path:
+                return True
+            if job_id in visited:
+                return False
+                
+            visited.add(job_id)
+            path.add(job_id)
+            
+            for dep_job_id in self.reverse_job_deps[job_id]:
+                if has_job_cycle(dep_job_id, visited, path):
+                    return True
+                    
+            path.remove(job_id)
+            return False
+            
+        visited = set()
+        for job_id in range(len(self.job_masks)):
+            if job_id not in visited:
+                if has_job_cycle(job_id, visited, set()):
+                    return False
+        return True
+
 class JobShopGymEnv(gym.Env):
     metadata = {"render_modes": ["human", "ansi"], "render_fps": 4}
 
@@ -161,33 +204,72 @@ class JobShopGymEnv(gym.Env):
             
             self.dependencies.active_operations[job_id] = set(range(len(job.operations)))
 
-    def reset(self, seed: Optional[int] = None) -> Tuple[np.ndarray, dict]:
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[np.ndarray, dict]:
+        # Call the super class reset method to handle seed
         super().reset(seed=seed)
         
+        # Initialize the environment's state
         self.current_state = State.create(
             num_jobs=len(self.jobs),
             num_machines=self.num_machines,
             max_operations=self.max_operations
         )
         
+         # Validate initial jobs and operations
+        self._validate_jobs()
+
+        # Set up dependencies and history
         self.dependencies = Dependencies(len(self.jobs))
         self._initialize_dependencies()
         self.action_history = []
+
+        # Validate dependencies
+        if not self.dependencies.validate_dependencies():
+            raise ValueError("Circular dependencies detected")
         
+        # Reset the total time or any other variable
         self.total_time = 0
         
-        observation = self._get_observation()
+        # If options are passed and you need to handle them, you can process them here
+        if options:
+            # Example: handle specific options, if needed
+            pass  # You can customize this based on what options you expect
         
+        # Generate the observation to return
+        #observation = self._get_observation().astype(np.float64)
+        observation = self._get_observation().astype(np.float32)
+        
+        # Return the observation and any additional information
         return observation, {}
-
+    
+    def _validate_jobs(self):
+        """Validate job and operation structure"""
+        for job_id, job in enumerate(self.jobs):
+            # Check for valid dependencies
+            for dep_job_id in job.dependent_jobs:
+                if dep_job_id >= len(self.jobs):
+                    raise ValueError(f"Invalid job dependency: Job {job_id} depends on non-existent job {dep_job_id}")
+            
+            # Check operations
+            for op_id, op in enumerate(job.operations):
+                # Validate machine assignment
+                if op.machine >= self.num_machines:
+                    raise ValueError(f"Invalid machine assignment for job {job_id}, operation {op_id}")
+                
+                # Validate operation dependencies
+                for dep_job_id, dep_op_id in op.dependent_operations:
+                    if dep_job_id >= len(self.jobs):
+                        raise ValueError(f"Invalid operation dependency: [{job_id},{op_id}] depends on non-existent job {dep_job_id}")
+                    if dep_op_id >= len(self.jobs[dep_job_id].operations):
+                        raise ValueError(f"Invalid operation dependency: [{job_id},{op_id}] depends on non-existent operation {dep_op_id}")
+                    
     def _get_observation(self) -> np.ndarray:
-        return np.concatenate([
-            self.current_state.job_progress.flatten(),
-            self.current_state.machine_availability,
-            self.current_state.next_operation_for_job,
-            self.current_state.completed_jobs.astype(np.float32),
-            self.current_state.job_start_times
-        ])
+        """
+        Get the current state observation with consistent float32 dtype.
+        Returns:
+            np.ndarray: The observation vector with dtype float32
+        """
+        return self.current_state.get_observation()
 
     def _decode_action(self, action_id: int) -> Action:
         job_id = action_id // (self.num_machines * self.max_operations)
@@ -197,19 +279,34 @@ class JobShopGymEnv(gym.Env):
         return Action(job_id, machine_id, operation_id)
 
     def _is_valid_action(self, action: Action) -> bool:
-        if action.job >= len(self.jobs) or action.operation >= len(self.jobs[action.job].operations):
+        logger.debug(f"Validating action - Job: {action.job}, Operation: {action.operation}, Machine: {action.machine}")
+        
+        # Check 1: Job and operation bounds
+        if action.job >= len(self.jobs):
+            logger.debug(f"Invalid: Job {action.job} >= total jobs {len(self.jobs)}")
             return False
-            
+        if action.operation >= len(self.jobs[action.job].operations):
+            logger.debug(f"Invalid: Operation {action.operation} >= total operations {len(self.jobs[action.job].operations)}")
+            return False
+                
+        # Check 2: Job completion status
         if self.current_state.completed_jobs[action.job]:
+            logger.debug(f"Invalid: Job {action.job} is already completed")
             return False
-            
-        if action.operation != self.current_state.next_operation_for_job[action.job]:
+                
+        # Check 3: Operation order
+        next_op = self.current_state.next_operation_for_job[action.job]
+        if action.operation != next_op:
+            logger.debug(f"Invalid: Expected operation {next_op}, got {action.operation}")
             return False
-            
+                
+        # Check 4: Machine eligibility
         op = self.jobs[action.job].operations[action.operation]
         if action.machine not in op.eligible_machines:
+            logger.debug(f"Invalid: Machine {action.machine} not in eligible machines {op.eligible_machines}")
             return False
-            
+                
+        logger.debug(f"Action is valid")
         return True
 
     def _execute_action(self, action: Action):
@@ -310,12 +407,12 @@ class JobShopGymEnv(gym.Env):
         reward = 0
         
         # Reward for completing jobs
-        completion_reward = (completed_jobs / total_jobs) * 1000
+        completion_reward = (completed_jobs / total_jobs) * 10
         reward += completion_reward
         
         # Penalize makespan only when jobs are completed
         if completed_jobs > 0:
-            makespan_penalty = -self.total_time / 100
+            makespan_penalty = -self.total_time / 200
             reward += makespan_penalty
         
         # Machine utilization bonus
@@ -323,9 +420,14 @@ class JobShopGymEnv(gym.Env):
         utilization_reward = machine_utilization * 200
         reward += utilization_reward
         
-        # Add completion bonus
+        # Completion bonus with scaling
         if completed_jobs == total_jobs:
-            reward += 2000  # Large bonus for complete solutions
+            # Scale bonus based on makespan quality
+            max_theoretical_makespan = sum(max(op.duration for op in job.operations) 
+                                        for job in self.jobs)
+            makespan_quality = max(0, 1 - (self.total_time / max_theoretical_makespan))
+            completion_bonus = 1000 + (makespan_quality * 1000)  # Between 1000-2000
+            reward += completion_bonus
             
         # Add penalty for very long makespans
         if self.total_time > 1000:  # Adjust threshold based on your problem
@@ -344,7 +446,35 @@ class JobShopGymEnv(gym.Env):
         return [busy_time / total_time for busy_time in machine_busy_time]
 
     def is_done(self) -> bool:
-        return not bool(self.dependencies.active_jobs)
+        if not bool(self.dependencies.active_jobs):
+            return True
+        
+        # Check for deadlock
+        remaining_jobs = set(range(len(self.jobs))) - set(np.where(self.current_state.completed_jobs)[0])
+        for job_id in remaining_jobs:
+            if not self._can_progress(job_id):
+                logger.error(f"Potential deadlock detected for job {job_id}")
+                self._print_job_status(job_id)
+                return True
+        return False
+    
+    def _is_operation_complete(self, job_id: int, operation_id: int) -> bool:
+        """Check if a specific operation of a job is completed.
+        
+        Args:
+            job_id (int): The ID of the job
+            operation_id (int): The ID of the operation within the job
+            
+        Returns:
+            bool: True if operation is completed, False otherwise
+        """
+        # Check if operation_id is valid for this job
+        if operation_id >= len(self.jobs[job_id].operations):
+            return False
+            
+        # An operation is complete if its job progress value is non-zero
+        # (since job progress stores completion times)
+        return self.current_state.job_progress[job_id, operation_id] > 0
 
     def render(self, mode="human"):
         if mode == "human":
@@ -368,6 +498,32 @@ class JobShopGymEnv(gym.Env):
                           f"End: {end_time:4d}")
             
             print(f"\nTotal makespan: {self.total_time}")
+
+
+    def _can_progress(self, job_id: int) -> bool:
+        """Check if a job can make progress"""
+        if self.current_state.completed_jobs[job_id]:
+            return True
+            
+        current_op = self.current_state.next_operation_for_job[job_id]
+        if current_op >= len(self.jobs[job_id].operations):
+            return False
+            
+        op = self.jobs[job_id].operations[current_op]
+        return any(self.current_state.machine_availability[m] != float('inf') 
+                for m in op.eligible_machines)
+
+    def _print_job_status(self, job_id: int):
+        """Print detailed status of a job for debugging"""
+        job = self.jobs[job_id]
+        current_op = self.current_state.next_operation_for_job[job_id]
+        logger.error(f"Job {job_id} status:")
+        logger.error(f"Current operation: {current_op}")
+        logger.error(f"Operations progress: {self.current_state.job_progress[job_id]}")
+        logger.error(f"Dependencies: {job.dependent_jobs}")
+        if current_op < len(job.operations):
+            op = job.operations[current_op]
+            logger.error(f"Current operation details: {op}")
 
     def close(self):
         pass

@@ -216,6 +216,11 @@ class HybridTsetlinQLearningScheduler:
             
             features_reshaped = state_features.reshape(1, -1)
             action_tm.fit(features_reshaped, np.array([tm_class]), epochs=100)
+            
+            # Print clauses after training
+            # print(f"\nClauses for action (job={action.job}, machine={action.machine}):")
+            # action_tm.print_clauses()
+
 
         except Exception as e:
             logging.error(f"Error in model updates: {e}")
@@ -327,7 +332,7 @@ class JSSPFeatureTransformer:
         # Calculate feature sizes for each component
         self.machine_times_size = self.n_machines * self.machine_time_bits
         self.job_status_size = self.n_jobs * self.job_status_bits
-        #self.op_status_size = self.n_jobs * self.n_machines
+        #self.op_status_size = self.n_jobs * self.n_machines                  #changed
         self.op_status_size = self.n_jobs
         
         # Calculate total binary features
@@ -344,7 +349,8 @@ class JSSPFeatureTransformer:
         print(f"Feature transformer initialized:")
         print(f"  ****Machine times: {self.n_machines} machines × {self.machine_time_bits} bits = {self.machine_times_size}")
         print(f"  ***Job status: {self.n_jobs} jobs × {self.job_status_bits} bits = {self.job_status_size}")
-        #print(f"  ***Operation status: {self.n_jobs} jobs × {self.n_machines} = {self.op_status_size}")
+        #print(f"  ***Operation status: {self.n_jobs} jobs × {self.n_machines} = {self.op_status_size}")               #changed
+
         print(f"  ***Operation status: {self.n_jobs} jobs  = {self.op_status_size}")
 
 

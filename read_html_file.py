@@ -95,8 +95,8 @@ def print_analysis(results):
 
 if __name__ == "__main__":
     # Example usage
-    #html_file_path = "output/doris_ql_gantt.html"
-    html_file_path = "ta70_qlearning_gantt.html"
+    html_file_path = "output/ta70_qtm_gantt.html"
+    #html_file_path = "ta70_qlearning_gantt.html"
     try:
         results = analyze_job_shop_schedule(html_file_path)
         print_analysis(results)

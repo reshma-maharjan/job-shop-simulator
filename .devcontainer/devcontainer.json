@@ -2,12 +2,12 @@
   "name": "Custom Dev Container",
   "context": "..",
   "dockerFile": "./Dockerfile",
-  "runArgs": ["--init"],
+  "runArgs": ["--init", "--gpus=all"],
   "remoteUser": "ubuntu",
   "customizations": {
     "vscode": {
       "settings": {
-        "terminal.integrated.shell.linux": "/bin/bash",
+        "terminal.integrated.shell.linux": "/bin/bash"
       },
       "extensions": [
         "ms-python.python",

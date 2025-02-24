@@ -3,13 +3,16 @@ from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from job_shop_env import JobShopGymEnv, Job, Operation
 from job_shop_manual_generator import ManualGymGenerator
+from Job_shop_taillard_generator import TaillardGymGenerator
 import json
 import os
 import argparse
 import numpy as np
+import matplotlib.pyplot as plt
 
 def read_taillard_instance(file_path):
     """Read and parse a Taillard instance file."""
+    file_path ='/workspaces/job-shop-simulator/per_jsp/data/taillard_instances/ta21.txt'
     with open(file_path, 'r') as f:
         # Read first line
         num_jobs, num_machines = map(int, f.readline().split())
@@ -47,6 +50,8 @@ class JSPCallback(EvalCallback):
     def __init__(self, eval_env, output_dir, **kwargs):
         super().__init__(eval_env, **kwargs)
         self.best_makespan = float('inf')
+        self.best_partial_makespan = float('inf') 
+
         self.output_dir = output_dir
         self.solution_history = []
         self.last_makespan = float('inf')
@@ -74,6 +79,13 @@ class JSPCallback(EvalCallback):
             completed_jobs = np.sum(env.current_state.completed_jobs)
             total_jobs = len(env.jobs)
             
+            # Track partial progress
+            if completed_jobs > 0 and current_makespan < self.best_partial_makespan:
+                self.best_partial_makespan = current_makespan
+                print(f"\nNew Best Partial Solution!")
+                print(f"Completed Jobs: {completed_jobs}/{total_jobs}")
+                print(f"Partial Makespan: {self.best_partial_makespan}")
+
             # Get the last step information
             if hasattr(env, 'last_step_info'):
                 next_state = env.last_step_info.get('next_state')
@@ -97,6 +109,8 @@ class JSPCallback(EvalCallback):
                 if done:
                     self.episode_rewards.append(self.current_episode_reward)
                     self.current_episode_reward = 0
+            else:
+                print("Warning: No step information available")
             
             print(f"\nTraining Progress:")
             print(f"Completed Jobs: {completed_jobs}/{total_jobs}")
@@ -146,8 +160,6 @@ class JSPCallback(EvalCallback):
         if not self.step_history:
             return
             
-        import matplotlib.pyplot as plt
-        
         # Create figure with subplots
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
         
@@ -218,7 +230,7 @@ class JSPCallback(EvalCallback):
         with open(os.path.join(self.output_dir, 'best_solution.json'), 'w') as f:
             json.dump(solution, f, indent=2)
 
-def train_jssp(env, total_timesteps=100000, output_dir='./results'):
+def train_jssp(env, total_timesteps=1000, output_dir='./results'):
     os.makedirs(output_dir, exist_ok=True)
     
     env = Monitor(env)
@@ -235,12 +247,15 @@ def train_jssp(env, total_timesteps=100000, output_dir='./results'):
     model = PPO(
         "MlpPolicy",
         env,
-        learning_rate=1e-3,    
-        n_steps=1024,          
-        batch_size=128,        
-        n_epochs=5,            
-        gamma=0.99,
-        ent_coef=0.01,        
+        learning_rate=3e-4,
+        n_steps=1024,
+        batch_size=64,
+        n_epochs=1,
+        gamma=0.995,
+        gae_lambda=0.95,
+        ent_coef=0.1,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
         verbose=1
     )
 
@@ -252,27 +267,26 @@ def train_jssp(env, total_timesteps=100000, output_dir='./results'):
 
     return model, callback.best_makespan
 
-def main():
-    parser = argparse.ArgumentParser(description='Train JSSP with PPO')
-    parser.add_argument('--instance_type', choices=['taillard', 'manual'], required=True)
-    parser.add_argument('--instance_path', type=str, required=True)
-    parser.add_argument('--timesteps', type=int, default=100000)
-    parser.add_argument('--output_dir', type=str, default='./results')
-    
-    args = parser.parse_args()
-    
-    if args.instance_type == 'taillard':
-        jobs = read_taillard_instance(args.instance_path)
-        env = JobShopGymEnv(jobs=jobs)  # Pass jobs directly
+def create_and_train(instance_type, instance_path, timesteps=1000, output_dir='./results'):
+    if instance_type == 'taillard':
+        jobs = read_taillard_instance(instance_path)
+        env = JobShopGymEnv(jobs=jobs)
     else:
-        env = ManualGymGenerator.create_env_from_file(args.instance_path)
+        env = ManualGymGenerator.create_env_from_file(instance_path)
     
     num_jobs = len(env.jobs)
     num_machines = max(op.machine for job in env.jobs for op in job.operations) + 1
     print(f"Environment created with {num_jobs} jobs and {num_machines} machines")
     
-    model, best_makespan = train_jssp(env, args.timesteps, args.output_dir)
+    model, best_makespan = train_jssp(env, timesteps, output_dir)
     print(f"Training completed. Best makespan: {best_makespan}")
+    return model, best_makespan
 
 if __name__ == "__main__":
-    main()
+    # Example usage:
+    model, best_makespan = create_and_train(
+        instance_type='taillard',
+        instance_path='/workspaces/job-shop-simulator/per_jsp/data/taillard_instances/ta51.txt',
+        timesteps=500000,
+        output_dir='./results'
+    )

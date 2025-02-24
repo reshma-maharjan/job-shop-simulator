@@ -13,6 +13,7 @@ from Job_shop_taillard_generator import TaillardGymGenerator
 from pathlib import Path
 import json
 import time
+from job_shop_env import JobShopGymEnv
 
 
 # Configure logging
@@ -26,7 +27,7 @@ wandb.login(key="22a8b69ab5255b120ca37b40c2f998f71db3c615")
 
 def init_wandb(config, instance_name):
     wandb.init(
-        project="job-shop-scheduling",
+        project="jssp_DQN",
         entity="reshma-stha2016",  # Fixed: Using your actual username
         name=f"DQN_{instance_name}_{time.strftime('%Y%m%d_%H%M%S')}",
         config={
@@ -48,7 +49,6 @@ def init_wandb(config, instance_name):
         },
         tags=["DQN", instance_name, "job-shop"]
     )
-
 
 class Policy(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -173,7 +173,8 @@ class DQN:
         logger.info(f"Problem size: {len(self.env_unwrapped.jobs)} jobs, {self.env_unwrapped.num_machines} machines")
         
         for episode in range(nr_of_episodes):
-            state, _ = self.env.reset(seed=None, options=None)
+            state, _ = self.env.reset(seed=None, options=None) 
+            
             state = self.normalize_observation(state)
             episode_reward = 0
             episode_actions = []
@@ -215,7 +216,7 @@ class DQN:
         return self.best_actions, self.best_makespan
 
 def main():
-    instance_name = 'ta11'
+    instance_name = 'ta31'
     base_env = TaillardGymGenerator.create_env_from_instance(f'{instance_name}.txt')
     
     # Register environment
@@ -271,7 +272,8 @@ def main():
         wandb.log_artifact(model_artifact)
         
         # Execute best solution
-        env.reset(seed=None, options=None)
+        #env.reset(seed=None, options=None)
+        env.reset(seed=None)
         schedule_data = []
         
         for action_id in best_actions:

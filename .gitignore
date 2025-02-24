@@ -6,3 +6,7 @@ vcpkg
 cmake-build-debug*
 .idea
 wandb*
+output
+learning_curves
+models
+results

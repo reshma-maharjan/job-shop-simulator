@@ -6,8 +6,8 @@ import logging
 import json
 from collections import defaultdict
 
-from per_jsp.environment.job_shop_environment import Job
-from per_jsp.environment.job_shop_manual_generator import ManualJobShopGenerator
+from per_jsp.python.per_jsp.environment.job_shop_environment import Job
+from per_jsp.python.per_jsp.environment.job_shop_manual_generator import ManualJobShopGenerator
 
 logger = logging.getLogger(__name__)
 

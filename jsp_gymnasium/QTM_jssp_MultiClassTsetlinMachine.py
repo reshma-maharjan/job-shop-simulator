@@ -8,8 +8,6 @@ import gymnasium as gym
 from gymnasium.envs.registration import register
 from Job_shop_taillard_generator import TaillardGymGenerator
 import wandb
-import argparse
-import os
 from tqdm.auto import tqdm  
 import logging
 from pathlib import Path
@@ -251,30 +249,30 @@ class QTMAgent:
             
             while step_count < max_steps:
                 # Select action
-                logging.info(f"\nStep {step_count + 1}")
+                # logging.info(f"\nStep {step_count + 1}")
                 valid_actions = self.get_valid_actions()
-                logging.info(f"Valid actions available: {len(valid_actions)}")
+                # logging.info(f"Valid actions available: {len(valid_actions)}")
                 
                 if not valid_actions:
-                    logging.info("No valid actions available - terminating episode")
+                    # logging.info("No valid actions available - terminating episode")
                     break
                     
                 action = self.get_next_action(cur_obs)
                 
                 # Verify if selected action is valid
                 if action not in valid_actions:
-                    logging.error(f"Invalid action selected: {action}")
+                    # logging.error(f"Invalid action selected: {action}")
                     logging.error(f"Valid actions were: {valid_actions}")
                 
                 # Execute action
                 next_obs, reward, terminated, truncated, info = self.env.step(action)
-                logging.info(f"Step results: reward={reward}, terminated={terminated}, truncated={truncated}")
+                # logging.info(f"Step results: reward={reward}, terminated={terminated}, truncated={truncated}")
                 
                 
                 # Calculate custom reward
                 custom_reward = self.calculate_reward(info)
                 self.monitor_rewards(custom_reward, step_count)
-                logging.info(f"Custom reward: {custom_reward}")
+                # logging.info(f"Custom reward: {custom_reward}")
                 
                 # Store experience
                 self.replay_buffer.save_experience(
@@ -292,12 +290,12 @@ class QTMAgent:
                 # Check training conditions
                 if self.total_timesteps >= self.config['sample_size']:
                     if self.total_timesteps % self.config['train_freq'] == 0:
-                        logging.info("Starting agent training...")  #..............................training
+                        # logging.info("Starting agent training...")  #..............................training
                         try:
                             before_train = time.time()
                             self.train()
                             after_train = time.time()
-                            logging.info(f"Agent training completed in {after_train - before_train:.2f} seconds")
+                            # logging.info(f"Agent training completed in {after_train - before_train:.2f} seconds")
                         except Exception as e:
                             logging.error(f"Error during training: {e}")
                             logging.exception("Full training error traceback:")
@@ -835,8 +833,8 @@ def set_seeds(seed: int = 42) -> None:
 def init_wandb(config: Dict[str, Any], instance_name: str) -> None:
     """Initialize Weights & Biases logging"""
     wandb.init(
-        project="job-shop-qtm_MultiClassTsetlinMachine",
-        entity="reshma-stha2016",  # Using your actual W&B username
+        project="job-shop-qtm_MultiClassTsetlinMachine_episodes",
+        entity="reshma-stha2016",  
         name=f"QTM_{instance_name}_{time.strftime('%Y%m%d_%H%M%S')}",
         config={
             "algorithm": "QTM",
@@ -1012,7 +1010,7 @@ def run_job_shop_scheduling(
                 })
 
         # Execute best solution and collect data
-        logging.info("\nExecuting best solution...")
+        # logging.info("\nExecuting best solution...")
         env.reset()
         schedule_data = []
         
@@ -1113,7 +1111,7 @@ if __name__ == "__main__":
         # Run with default parameters
         results = run_job_shop_scheduling(
             instance_name="ta01.txt",
-            episodes=1,
+            episodes=500,
             num_clauses=2000,
             threshold=1500,
             specificity=1.5,

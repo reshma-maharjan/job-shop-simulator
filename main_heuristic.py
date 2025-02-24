@@ -1,6 +1,6 @@
 """
 Main entry point for the Job Shop Scheduling System.
-Handles problem generation, solving, and result visualization for FIFO, MWKR, and SPT schedulers.
+Handles problem generation, solving, and result visualization for FIFO, MWKR, SPT, and OR-Tools schedulers.
 """
 
 import logging
@@ -26,6 +26,7 @@ from per_jsp.python.per_jsp.algorithms.base import BaseScheduler
 from per_jsp.python.per_jsp.algorithms.fifo import FIFOScheduler
 from per_jsp.python.per_jsp.algorithms.mwkr import MWKRScheduler
 from per_jsp.python.per_jsp.algorithms.spt import SPTScheduler
+from per_jsp.python.per_jsp.algorithms.ortools import ORToolsScheduler
 
 # Configure logging
 logging.basicConfig(
@@ -105,7 +106,8 @@ def create_scheduler(algorithm: str) -> BaseScheduler:
     schedulers = {
         "fifo": FIFOScheduler,
         "mwkr": MWKRScheduler,
-        "spt": SPTScheduler
+        "spt": SPTScheduler,
+        "ortools": ORToolsScheduler
     }
     
     if algorithm not in schedulers:
@@ -119,20 +121,24 @@ def run_scheduler(env: JobShopEnvironment, scheduler: BaseScheduler,
     logger.info(f"Running {algorithm.upper()} scheduler...")
     
     start_time = time.time()
-    actions, makespan = scheduler.solve(env, max_steps)
-    solve_time = time.time() - start_time
-    
-    metrics = env.get_performance_metrics()
-    
-    # Display results
-    env.print_schedule(show_critical_path=show_critical_path)
-    
-    return {
-        "actions": actions,
-        "makespan": makespan,
-        "solve_time": solve_time,
-        "metrics": metrics
-    }
+    try:
+        actions, makespan = scheduler.solve(env, max_steps)
+        solve_time = time.time() - start_time
+        
+        metrics = env.get_performance_metrics()
+        
+        # Display results
+        env.print_schedule(show_critical_path=show_critical_path)
+        
+        return {
+            "actions": actions,
+            "makespan": makespan,
+            "solve_time": solve_time,
+            "metrics": metrics
+        }
+    except Exception as e:
+        logger.error(f"Scheduler {algorithm} failed: {str(e)}")
+        raise
 
 def setup_argument_parser() -> argparse.ArgumentParser:
     """Configure and return argument parser."""
@@ -145,7 +151,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     
     # Algorithm selection
     parser.add_argument("--algorithms", type=str, nargs="+", 
-                       choices=["fifo", "mwkr", "spt"], default=["fifo"],
+                       choices=["fifo", "mwkr", "spt", "ortools"], default=["fifo"],
                        help="Algorithms to run")
     
     # File inputs/outputs
@@ -157,6 +163,10 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     # Solver parameters
     parser.add_argument("--max-steps", type=int, default=1000)
     parser.add_argument("--seed", type=int, help="Random seed")
+    
+    # OR-Tools specific parameters
+    parser.add_argument("--time-limit", type=int, default=60,
+                       help="Time limit in seconds for OR-Tools solver")
     
     # Visualization and output options
     parser.add_argument("--show-critical-path", action="store_true",
@@ -201,67 +211,76 @@ def main() -> int:
             env = JobShopEnvironment(jobs)
             scheduler = create_scheduler(algorithm)
             
+            # Set OR-Tools specific parameters if applicable
+            if algorithm == "ortools" and hasattr(scheduler, 'set_time_limit'):
+                scheduler.set_time_limit(args.time_limit)
+            
             # Run scheduler
-            result = run_scheduler(
-                env, 
-                scheduler, 
-                args.max_steps,
-                algorithm,
-                args.show_critical_path
-            )
-            results[algorithm] = result
-            
-            # Generate and save Gantt data if requested
-            gantt_data = env.generate_gantt_data() if args.save_gantt else None
-            
-            # Save individual solution
-            solution_file = f"{args.output_prefix}_{algorithm}_solution.json"
-            save_solution(
-                solution_file,
-                result["actions"],
-                result["makespan"],
-                env.get_schedule_data(),
-                algorithm,
-                result["solve_time"],
-                result["metrics"],
-                gantt_data,
-                {"max_steps": args.max_steps}
-            )
-            
-            # Generate visualization if requested
-            if args.visualize:
-                visualization_file = f"{args.output_prefix}_{algorithm}_gantt.html"
-                env.generate_html_gantt(str(output_dir / visualization_file))
-                logger.info(f"Gantt chart visualization saved to {visualization_file}")
-            
-            # Print summary
-            logger.info(f"\n{algorithm.upper()} Solution Summary:")
-            logger.info(f"Solve time: {result['solve_time']:.2f} seconds")
-            logger.info(f"Makespan: {result['makespan']}")
-            logger.info(f"Estimated lower bound: {estimated_makespan}")
-            logger.info(f"Number of actions: {len(result['actions'])}")
-            logger.info(f"Average machine utilization: {result['metrics']['avg_machine_utilization']*100:.1f}%")
+            try:
+                result = run_scheduler(
+                    env, 
+                    scheduler, 
+                    args.max_steps,
+                    algorithm,
+                    args.show_critical_path
+                )
+                results[algorithm] = result
+                
+                # Generate and save Gantt data if requested
+                gantt_data = env.generate_gantt_data() if args.save_gantt else None
+                
+                # Save individual solution
+                solution_file = f"{args.output_prefix}_{algorithm}_solution.json"
+                save_solution(
+                    solution_file,
+                    result["actions"],
+                    result["makespan"],
+                    env.get_schedule_data(),
+                    algorithm,
+                    result["solve_time"],
+                    result["metrics"],
+                    gantt_data,
+                    {"max_steps": args.max_steps}
+                )
+                
+                # Generate visualization if requested
+                if args.visualize:
+                    visualization_file = f"{args.output_prefix}_{algorithm}_gantt.html"
+                    env.generate_html_gantt(str(output_dir / visualization_file))
+                    logger.info(f"Gantt chart visualization saved to {visualization_file}")
+                
+                # Print summary
+                logger.info(f"\n{algorithm.upper()} Solution Summary:")
+                logger.info(f"Solve time: {result['solve_time']:.2f} seconds")
+                logger.info(f"Makespan: {result['makespan']}")
+                logger.info(f"Estimated lower bound: {estimated_makespan}")
+                logger.info(f"Number of actions: {len(result['actions'])}")
+                logger.info(f"Average machine utilization: {result['metrics']['avg_machine_utilization']*100:.1f}%")
+                
+            except Exception as e:
+                logger.error(f"Failed to run {algorithm}: {str(e)}")
+                continue
         
         # Save comparative results
-        comparative_results = {
-            'instance_info': {
-                'num_jobs': len(jobs),
-                'num_machines': env.num_machines,
-                'estimated_makespan': estimated_makespan
-            },
-            'results': {
-                algo: {
-                    'makespan': data['makespan'],
-                    'solve_time': data['solve_time'],
-                    'utilization': data['metrics']['avg_machine_utilization']
+        if results:  # Only save if we have at least one successful result
+            comparative_results = {
+                'instance_info': {
+                    'num_jobs': len(jobs),
+                    'num_machines': env.num_machines,
+                    'estimated_makespan': estimated_makespan
+                },
+                'results': {
+                    algo: {
+                        'makespan': data['makespan'],
+                        'solve_time': data['solve_time'],
+                        'utilization': data['metrics']['avg_machine_utilization']
+                    }
+                    for algo, data in results.items()
                 }
-                for algo, data in results.items()
             }
-        }
-        
-        
-        with open(output_dir / 'comparative_results.json', 'w') as f:
-            json.dump(comparative_results, f, indent=2, cls=NumpyJSONEncoder)
+            
+            with open(output_dir / 'comparative_results.json', 'w') as f:
+                json.dump(comparative_results, f, indent=2, cls=NumpyJSONEncoder)
             
     except Exception as e:
         logger.error(f"Error occurred: {str(e)}", exc_info=True)

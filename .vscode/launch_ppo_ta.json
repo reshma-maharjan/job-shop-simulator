@@ -1,0 +1,43 @@
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python Debugger: Current File",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "${file}",
+//             "console": "integratedTerminal",
+//             "args": [
+            
+//             "--taillard",
+//             "--taillard-file", "/workspaces/job-shop-simulator/per_jsp/data/lawrance_instances/la25.txt",
+//             "--algorithm", "ppo",
+//             "--visualize",
+//             "--output-prefix", "la25",
+//             "--episodes=200"
+//             ]
+//         }
+//     ]
+// }
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+            
+            "--taillard",
+            "--taillard-file", "/workspaces/job-shop-simulator/per_jsp/data/taillard_instances/ta01.txt",
+            "--algorithm", "ppo",
+            "--visualize",
+            "--output-prefix", "ppo_ta01_5000",
+            "--episodes=5000"
+            ]
+        }
+    ]
+}

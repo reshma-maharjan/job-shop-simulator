@@ -1,0 +1,44 @@
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python Debugger: Current File",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "${file}",
+//             "console": "integratedTerminal",
+//             "args": [
+//             "--manual",
+//             "--input-json", "/workspaces/job-shop-simulator/per_jsp/data/problem_instances/doris.json",
+//             "--algorithm", "double-qtm",
+//             "--visualize",
+//             "--output-prefix", "json_double_qtm",
+//             "--episodes=200"
+//             ]
+//         }
+//     ]
+// }
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+            
+            "--taillard",
+            "--taillard-file", "/workspaces/job-shop-simulator/per_jsp/data/taillard_instances/ta01.txt",
+            "--algorithm", "double-qtm",
+            "--visualize",
+            "--output-prefix", "ta_double_qtm",
+            "--episodes=200"
+            ]
+        }
+    ]
+}
+
+
