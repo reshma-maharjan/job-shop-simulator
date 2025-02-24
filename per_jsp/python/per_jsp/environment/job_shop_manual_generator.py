@@ -1,11 +1,13 @@
 import numpy as np
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Set, Optional
 import logging
 import json
 from collections import defaultdict, deque
 
-from per_jsp.environment.job_shop_environment import Operation, Job
+from job_shop_environment import Operation, Job, MachineSpec
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class ManualJobShopGenerator:
@@ -100,67 +102,83 @@ class ManualJobShopGenerator:
         return chains
 
     @staticmethod
-    def calculate_chain_conflict(
-            jobs: List[Job],
-            chain1: List[int],
-            chain2: List[int]) -> int:
-        """
-        Calculate conflict score between two chains based on shared machine usage.
-        """
+    def calculate_chain_conflict(jobs: List[Job], chain1: List[int], chain2: List[int]) -> int:
+        """Calculate conflict score between two chains based on shared machine and tool usage."""
         machines1 = set()
         machines2 = set()
+        tools1 = set()
+        tools2 = set()
 
         for job_id in chain1:
             for op in jobs[job_id].operations:
                 machines1.add(op.machine)
+                tools1.update(op.required_tools)
         for job_id in chain2:
             for op in jobs[job_id].operations:
                 machines2.add(op.machine)
+                tools2.update(op.required_tools)
 
-        return len(machines1.intersection(machines2))
+        machine_conflicts = len(machines1.intersection(machines2))
+        tool_conflicts = len(tools1.intersection(tools2))
+        
+        return machine_conflicts + tool_conflicts
 
     @staticmethod
-    def calculate_chain_duration(jobs: List[Job], chain: List[int]) -> int:
-        """
-        Calculate the total duration of a chain including machine conflicts.
-        """
+    def calculate_chain_duration(jobs: List[Job], chain: List[int], machine_specs: Optional[List[MachineSpec]] = None) -> int:
+        """Calculate the total duration of a chain including machine conflicts and tool changes."""
         duration = 0
         used_machines = set()
+        required_tools = defaultdict(set)  # machine -> set of tools
 
         for job_id in chain:
+            # Add operation duration
             job_duration = sum(op.duration for op in jobs[job_id].operations)
             duration += job_duration
+
+            # Track machine and tool usage
             for op in jobs[job_id].operations:
                 used_machines.add(op.machine)
+                required_tools[op.machine].update(op.required_tools)
 
         # Add overhead for machine switches
         duration += len(used_machines) * 10
+
+        # Add estimated tool change overhead if machine specs provided
+        if machine_specs:
+            for machine, tools in required_tools.items():
+                if machine < len(machine_specs) and machine_specs[machine].tool_matrix is not None:
+                    # Estimate tool change time based on matrix
+                    tool_matrix = machine_specs[machine].tool_matrix
+                    avg_change_time = np.mean(tool_matrix[tool_matrix > 0])
+                    duration += len(tools) * avg_change_time
+
         return duration
 
     @staticmethod
-    def calculate_optimal_makespan(
-            jobs: List[Job],
-            job_dependencies: List[List[int]],
-            num_machines: int) -> int:
-        """
-        Calculate the optimal makespan considering dependencies and machine conflicts.
-        """
+    def calculate_optimal_makespan(jobs: List[Job], 
+                                 job_dependencies: List[List[int]], 
+                                 num_machines: int,
+                                 machine_specs: Optional[List[MachineSpec]] = None) -> int:
+        """Calculate the optimal makespan considering dependencies, machine conflicts, and tool changes."""
         # Identify dependency chains
         chains = ManualJobShopGenerator.identify_dependency_chains(jobs, job_dependencies)
 
         # Calculate base workload
         total_workload = 0
         machine_workload = [0] * num_machines
+        tool_workload = defaultdict(int)  # tool -> total usage time
 
         for job in jobs:
             for op in job.operations:
                 total_workload += op.duration
                 machine_workload[op.machine] += op.duration
+                for tool in op.required_tools:
+                    tool_workload[tool] += op.duration
 
         # Calculate chain durations with conflicts
         max_chain_duration = 0
         for chain in chains:
-            chain_duration = ManualJobShopGenerator.calculate_chain_duration(jobs, chain)
+            chain_duration = ManualJobShopGenerator.calculate_chain_duration(jobs, chain, machine_specs)
             max_chain_duration = max(max_chain_duration, chain_duration)
 
             # Consider conflicts with other chains
@@ -177,71 +195,96 @@ class ManualJobShopGenerator:
         max_machine_workload = max(machine_workload)
         avg_workload = total_workload / num_machines
 
+        # Consider tool change overhead
+        tool_change_overhead = 0
+        if machine_specs:
+            for spec in machine_specs:
+                if spec.tool_matrix is not None:
+                    # Estimate average tool change time
+                    avg_change_time = np.mean(spec.tool_matrix[spec.tool_matrix > 0])
+                    tool_change_overhead += avg_change_time * len(tool_workload)
+
         # Calculate lower bound considering all factors
         lower_bound = max(
             max_chain_duration,
-            max_machine_workload,
-            int(np.ceil(avg_workload))
+            max_machine_workload + tool_change_overhead,
+            int(np.ceil(avg_workload + tool_change_overhead))
         )
 
         logger.info(f"Max chain duration (with conflicts): {max_chain_duration}")
         logger.info(f"Max machine workload: {max_machine_workload}")
         logger.info(f"Average workload per machine: {avg_workload:.2f}")
+        if tool_change_overhead > 0:
+            logger.info(f"Estimated tool change overhead: {tool_change_overhead}")
 
         return lower_bound
 
     @classmethod
-    def generate_from_data(cls, job_shop_data: Dict) -> Tuple[List[Job], int]:
+    def generate_from_data(cls, job_shop_data: Dict) -> Tuple[List[Job], List[MachineSpec], int]:
         """Generate job shop problem from JSON data structure."""
         logger.info("Starting to generate job shop from data structure")
 
         num_jobs = job_shop_data["metadata"]["numJobs"]
         num_machines = job_shop_data["metadata"]["numMachines"]
+        num_tools = job_shop_data["metadata"].get("numTools", 0)
 
-        logger.info(f"Data loaded: {num_jobs} jobs, {num_machines} machines")
+        logger.info(f"Data loaded: {num_jobs} jobs, {num_machines} machines, {num_tools} tools")
 
-        # Convert to job dependencies format
+        # Parse machine specifications
+        machine_specs = []
+        if "machine_specs" in job_shop_data:
+            for spec_data in job_shop_data["machine_specs"]:
+                tooling = spec_data.get("tooling", {})
+                spec = MachineSpec(
+                    max_slots=tooling.get("max_slots", -1),
+                    tool_matrix=np.array(tooling["tool_matrix"]) if "tool_matrix" in tooling else None,
+                    compatible_tools=set(tooling.get("compatible_tools", []))
+                )
+                machine_specs.append(spec)
+
+        # Create jobs with tool requirements
         job_dependencies = [[] for _ in range(num_jobs)]
-        for job_data in job_shop_data["jobs"]:
-            job_dependencies[job_data["id"]] = job_data["dependencies"]
-
-        # Check for circular dependencies
-        if cls.detect_circular_dependencies(job_dependencies):
-            logger.error("Circular dependencies detected in job dependencies")
-            raise ValueError("Circular dependencies detected")
-
-        # Create jobs
         jobs = [Job() for _ in range(num_jobs)]
+        
         for job_data in job_shop_data["jobs"]:
-            job = jobs[job_data["id"]]
+            job_id = job_data["id"]
+            job = jobs[job_id]
+            job_dependencies[job_id] = job_data.get("dependencies", [])
 
-            # Create operation
+            # Create operation with tool requirements
             op = Operation(
                 duration=job_data["duration"],
-                machine=job_data["machine"]
+                machine=job_data["machine"],
+                required_tools=set(job_data.get("required_tools", []))
             )
             op.eligible_machines = {op.machine}
 
-            # Add operation dependencies if they exist
+            # Add operation dependencies
             if "operationDependencies" in job_data:
                 for op_dep in job_data["operationDependencies"]:
                     for dep_job_id in op_dep["dependencies"]:
                         op.dependent_operations.append((dep_job_id, 0))
 
             job.operations = [op]
-            job.dependent_jobs = job_dependencies[job_data["id"]]
+            job.dependent_jobs = job_dependencies[job_id]
+
+        # Check for circular dependencies
+        if cls.detect_circular_dependencies(job_dependencies):
+            logger.error("Circular dependencies detected in job dependencies")
+            raise ValueError("Circular dependencies detected")
 
         # Validate and compute makespan
-        cls.validate_job_shop(jobs, num_machines)
-        optimal_makespan = cls.calculate_optimal_makespan(jobs, job_dependencies, num_machines)
+        cls.validate_job_shop(jobs, num_machines, machine_specs)
+        optimal_makespan = cls.calculate_optimal_makespan(
+            jobs, job_dependencies, num_machines, machine_specs)
 
         logger.info(f"Job shop generation complete with {len(jobs)} jobs")
         logger.info(f"Optimal makespan: {optimal_makespan}")
 
-        return jobs, optimal_makespan
+        return jobs, machine_specs, optimal_makespan
 
     @classmethod
-    def generate_from_file(cls, filename: str) -> Tuple[List[Job], int]:
+    def generate_from_file(cls, filename: str) -> Tuple[List[Job], List[MachineSpec], int]:
         """Generate job shop problem from JSON file."""
         logger.info(f"Starting to generate job shop from file: {filename}")
 
@@ -251,11 +294,13 @@ class ManualJobShopGenerator:
         return cls.generate_from_data(job_shop_data)
 
     @staticmethod
-    def validate_job_shop(jobs: List[Job], num_machines: int):
+    def validate_job_shop(jobs: List[Job], num_machines: int, 
+                         machine_specs: Optional[List[MachineSpec]] = None):
         """Validate the job shop configuration."""
         logger.info("Performing final job shop validation")
 
         machine_operations = defaultdict(set)
+        machine_tools = defaultdict(set)
 
         for job_id, job in enumerate(jobs):
             for op_id, op in enumerate(job.operations):
@@ -264,10 +309,21 @@ class ManualJobShopGenerator:
                     raise ValueError(f"Invalid machine assignment for Job {job_id} Operation {op_id}")
 
                 machine_operations[op.machine].add(job_id)
+                machine_tools[op.machine].update(op.required_tools)
 
                 if op.duration <= 0:
                     logger.error(f"Job {job_id} Operation {op_id} has invalid duration {op.duration}")
                     raise ValueError(f"Invalid duration for Job {job_id} Operation {op_id}")
+
+                # Validate tool requirements against machine specifications
+                if machine_specs and op.machine < len(machine_specs):
+                    spec = machine_specs[op.machine]
+                    if spec.compatible_tools is not None:
+                        invalid_tools = op.required_tools - spec.compatible_tools
+                        if invalid_tools:
+                            logger.error(f"Job {job_id} Operation {op_id} requires incompatible "
+                                       f"tools {invalid_tools} for machine {op.machine}")
+                            raise ValueError(f"Invalid tool requirements for Job {job_id} Operation {op_id}")
 
                 for dep_job_id, dep_op_id in op.dependent_operations:
                     if dep_job_id >= len(jobs):
@@ -280,11 +336,26 @@ class ManualJobShopGenerator:
                                      f"Job {dep_job_id} Op {dep_op_id}")
                         raise ValueError("Invalid operation dependency")
 
-        for machine_id, job_set in machine_operations.items():
-            if not job_set:
+        # Validate machine utilization and tool requirements
+        for machine_id in range(num_machines):
+            if not machine_operations[machine_id]:
                 logger.warning(f"Machine {machine_id} has no assigned operations")
             else:
-                logger.debug(f"Machine {machine_id} is used by {len(job_set)} jobs")
+                logger.debug(f"Machine {machine_id} is used by {len(machine_operations[machine_id])} jobs")
+                
+            if machine_specs and machine_id < len(machine_specs):
+                spec = machine_specs[machine_id]
+                if spec.max_slots != -1:
+                    max_concurrent_tools = max(
+                        len(op.required_tools)
+                        for job in jobs
+                        for op in job.operations
+                        if op.machine == machine_id
+                    )
+                    if max_concurrent_tools > spec.max_slots:
+                        logger.error(f"Machine {machine_id} requires {max_concurrent_tools} concurrent tools "
+                                   f"but only has {spec.max_slots} slots")
+                        raise ValueError(f"Insufficient tool slots on machine {machine_id}")
 
         logger.info("Job shop validation complete - configuration is valid")
 
@@ -296,39 +367,110 @@ if __name__ == "__main__":
     # Example job shop data
     example_data = {
         "metadata": {
-            "numJobs": 3,
-            "numMachines": 2
+            "numJobs": 5,
+            "numMachines": 3,
+            "numTools": 4
         },
+        "machine_specs": [
+            {
+                "tooling": {
+                    "max_slots": 3,
+                    "compatible_tools": [1, 2, 3],
+                    "tool_matrix": [
+                        [0, 10, 15, 20],  # From empty
+                        [10, 0, 12, 18],  # From tool 1
+                        [15, 12, 0, 15],  # From tool 2
+                        [20, 18, 15, 0]   # From tool 3
+                    ]
+                }
+            },
+            {
+                "tooling": {
+                    "max_slots": 2,
+                    "compatible_tools": [2, 3, 4],
+                    "tool_matrix": [
+                        [0, 0, 12, 15],   # From empty
+                        [0, 0, 0, 0],     # From tool 1 (not compatible)
+                        [12, 0, 0, 12],   # From tool 2
+                        [15, 0, 12, 0]    # From tool 3
+                    ]
+                }
+            },
+            {
+                "tooling": {
+                    "max_slots": 4,
+                    "compatible_tools": [1, 2, 3, 4],
+                    "tool_matrix": [
+                        [0, 10, 15, 20, 25],  # From empty
+                        [10, 0, 12, 18, 22],  # From tool 1
+                        [15, 12, 0, 15, 20],  # From tool 2
+                        [20, 18, 15, 0, 12],  # From tool 3
+                        [25, 22, 20, 12, 0]   # From tool 4
+                    ]
+                }
+            }
+        ],
         "jobs": [
             {
                 "id": 0,
-                "duration": 4,
+                "duration": 20,
                 "machine": 0,
+                "required_tools": [1, 2],
                 "dependencies": []
             },
             {
                 "id": 1,
-                "duration": 3,
+                "duration": 25,
                 "machine": 1,
+                "required_tools": [2, 3],
                 "dependencies": [0]
             },
             {
                 "id": 2,
-                "duration": 5,
+                "duration": 15,
+                "machine": 2,
+                "required_tools": [1, 3],
+                "dependencies": [0]
+            },
+            {
+                "id": 3,
+                "duration": 30,
                 "machine": 0,
+                "required_tools": [2, 3],
                 "dependencies": [1]
+            },
+            {
+                "id": 4,
+                "duration": 20,
+                "machine": 2,
+                "required_tools": [3, 4],
+                "dependencies": [2]
             }
         ]
     }
 
     # Generate job shop from data
     try:
-        jobs, makespan = ManualJobShopGenerator.generate_from_data(example_data)
+        jobs, machine_specs, makespan = ManualJobShopGenerator.generate_from_data(example_data)
         print(f"\nGenerated job shop problem with estimated makespan: {makespan}")
+        
+        print("\nJobs Configuration:")
         for i, job in enumerate(jobs):
             print(f"\nJob {i}:")
             print(f"Dependencies: {job.dependent_jobs}")
             for j, op in enumerate(job.operations):
-                print(f"  Operation {j}: Duration={op.duration}, Machine={op.machine}")
+                print(f"  Operation {j}:")
+                print(f"    Duration: {op.duration}")
+                print(f"    Machine: {op.machine}")
+                print(f"    Required Tools: {op.required_tools}")
+
+        print("\nMachine Specifications:")
+        for i, spec in enumerate(machine_specs):
+            print(f"\nMachine {i}:")
+            print(f"  Max Tool Slots: {spec.max_slots}")
+            print(f"  Compatible Tools: {spec.compatible_tools}")
+            if spec.tool_matrix is not None:
+                print(f"  Tool Change Matrix Shape: {spec.tool_matrix.shape}")
+
     except Exception as e:
         print(f"Error generating job shop: {e}")
