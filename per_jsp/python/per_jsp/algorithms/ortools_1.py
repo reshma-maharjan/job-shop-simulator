@@ -1,4 +1,9 @@
-from ortools.sat.python import cp_model
+import os
+import sys
+
+# Add the parent directory to sys.path to enable imports
+#sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.abspath("/workspaces/job-shop-simulator"))
 from per_jsp.python.per_jsp.algorithms.base import BaseScheduler
 from per_jsp.python.per_jsp.environment.job_shop_environment import JobShopEnvironment, Action
 import logging

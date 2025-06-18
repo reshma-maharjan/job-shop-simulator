@@ -6,9 +6,10 @@ import random
 from typing import List, Tuple, Callable
 from dataclasses import dataclass
 from per_jsp.python.per_jsp.algorithms.base import BaseScheduler
-from per_jsp.python.per_jsp.environment.job_shop_environment import JobShopEnvironment, Action
+from per_jsp.python.per_jsp.environment.job_shop_environment_original import JobShopEnvironment, Action
 from per_jsp.python.per_jsp.environment.job_shop_taillard_generator import TaillardJobShopGenerator
-
+import time
+from typing import List, Tuple, Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,10 @@ class QLearningScheduler(BaseScheduler):
         self.best_time = float('inf')
         self.best_schedule = []
         self.rng = np.random.RandomState()
+        # Add tracking for metrics
+        self.rewards_history = []
+        self.makespan_history = []
+        self.training_time_history = []
 
     def _initialize_q_table(self, env: JobShopEnvironment) -> None:
         """Initialize Q-table with proper dimensions."""
@@ -41,10 +46,7 @@ class QLearningScheduler(BaseScheduler):
 
     def _calculate_priority(self, env: JobShopEnvironment, action: Action) -> float:
         """Calculate priority score for an action."""
-<<<<<<< HEAD
-=======
         # Calculate remaining processing time for the job
->>>>>>> upstream/main
         remaining_time = sum(
             op.duration
             for op in env.jobs[action.job].operations[action.operation:]
@@ -101,10 +103,7 @@ class QLearningScheduler(BaseScheduler):
         # Get maximum future Q-value
         possible_actions = env.get_possible_actions()
         max_future_q = 0.0
-<<<<<<< HEAD
         
-=======
->>>>>>> upstream/main
         if possible_actions:
             max_future_q = max(
                 self.q_table[a.job, a.machine, a.operation]
@@ -118,10 +117,13 @@ class QLearningScheduler(BaseScheduler):
         )
         self.q_table[action.job, action.machine, action.operation] = new_q
 
+        return reward # Return reward for tracking
+
     def _run_episode(self, env: JobShopEnvironment, max_steps: int = 1000) -> List[Action]:
         """Run a single episode."""
         env.reset()
         episode_actions = []
+        total_reward = 0.0 
 
         while not env.is_done() and len(episode_actions) < max_steps:
             prev_time = env.total_time
@@ -133,12 +135,20 @@ class QLearningScheduler(BaseScheduler):
             env.step(action)
             episode_actions.append(action)
 
-            self._update_q_value(env, action, prev_time)
+            reward = self._update_q_value(env, action, prev_time)
+            
+            if reward is not None:
+                total_reward += reward
+            
 
-        return episode_actions
+        return episode_actions, total_reward
 
     def solve(self, env: JobShopEnvironment, max_steps: int = 1000) -> Tuple[List[Action], int]:
         """Solve using Q-learning."""
+         # Reset metrics tracking
+        self.rewards_history = []
+        self.makespan_history = []
+        self.training_time_history = []
         start_time = time.time()
 
         # Initialize Q-table
@@ -149,16 +159,21 @@ class QLearningScheduler(BaseScheduler):
 
         for episode in range(self.episodes):
             # Run episode
-            episode_actions = self._run_episode(env, max_steps)
+            episode_actions, episode_reward = self._run_episode(env, max_steps)
 
             # Evaluate episode
             env.reset()
-<<<<<<< HEAD
             
-=======
->>>>>>> upstream/main
             for action in episode_actions:
                 env.step(action)
+
+            current_makespan = env.total_time
+            current_time = time.time() - start_time
+            
+            # Store metrics for this episode
+            self.rewards_history.append(episode_reward)
+            self.makespan_history.append(current_makespan)
+            self.training_time_history.append(current_time)
 
             # Track best solution
             if env.total_time < self.best_time:
@@ -171,6 +186,8 @@ class QLearningScheduler(BaseScheduler):
 
             if (episode + 1) % 10 == 0:
                 logger.info(f"Episode {episode + 1}/{self.episodes}, "
+                            f"Makespan: {current_makespan}, "
+                            f"Time: {current_time:.2f},"
                             f"Best makespan: {self.best_time}")
 
         # Final run with best actions
@@ -183,3 +200,11 @@ class QLearningScheduler(BaseScheduler):
         logger.info(f"Final makespan: {env.total_time}")
 
         return self.best_schedule, env.total_time
+    
+    def get_training_metrics(self) -> Dict[str, Any]:
+        """Return training metrics collected during solve."""
+        return {
+            'rewards': self.rewards_history,
+            'makespans': self.makespan_history,
+            'training_times': self.training_time_history
+        }

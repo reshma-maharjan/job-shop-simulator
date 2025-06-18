@@ -7,19 +7,19 @@ from pyTsetlinMachine.tm import MultiClassTsetlinMachine
 
 logger = logging.getLogger(__name__)
 
-class DoubleQTsetlinScheduler:
+class HybridTsetlinQLearningScheduler:
     """
-    A hybrid scheduler that combines Double Q-learning with Tsetlin Machine for job shop scheduling.
-    Uses two Q-tables to reduce overestimation bias and Tsetlin Machine for feature-based action selection.
+    A hybrid scheduler that combines Q-learning with Tsetlin Machine for job shop scheduling.
+    Uses Q-learning for high-level policy learning and Tsetlin Machine for feature-based action selection.
     """
     def __init__(self,
                  learning_rate: float = 0.1,
                  discount_factor: float = 0.95,
                  exploration_rate: float = 1.0,
                  episodes: int = 1000,
-                 nr_clauses: int = 2000,
-                 T: float = 1500,
-                 s: float = 1.5,
+                 nr_clauses: int = 2000, #2000
+                 T: float = 1500, # 1500
+                 s: float = 1.5, # 1.5
                  optimal_makespan: int = None):
         
         # Q-learning parameters
@@ -35,8 +35,7 @@ class DoubleQTsetlinScheduler:
         self.s = s
         
         # Initialize state trackers
-        self.q_table_1 = None  # First Q-table
-        self.q_table_2 = None  # Second Q-table
+        self.q_table = None
         self.tsetlin_machines = {}  # Dict to store TM for each action
         self.best_time = float('inf')
         self.best_schedule = []
@@ -45,16 +44,14 @@ class DoubleQTsetlinScheduler:
         # Feature transformer for Tsetlin Machine
         self.feature_transformer = None
 
-    def _initialize_q_tables(self, env) -> None:
-        """Initialize both Q-tables with proper dimensions."""
+    def _initialize_q_table(self, env) -> None:
+        """Initialize Q-table with proper dimensions."""
         max_operations = max(len(job.operations) for job in env.jobs)
-        shape = (
+        self.q_table = np.zeros((
             len(env.jobs),          # Number of jobs
             env.num_machines,       # Number of machines
             max_operations         # Max operations per job
-        )
-        self.q_table_1 = np.zeros(shape)
-        self.q_table_2 = np.zeros(shape)
+        ))
 
     def _initialize_feature_transformer(self, env) -> None:
         """Initialize the feature transformer for the Tsetlin Machine."""
@@ -67,17 +64,27 @@ class DoubleQTsetlinScheduler:
 
     def _get_or_create_tm(self, action_id: int) -> MultiClassTsetlinMachine:
         """Get existing TM or create new one for given action."""
-        if action_id not in self.tsetlin_machines:
-            tm = MultiClassTsetlinMachine(
-                self.nr_clauses,
-                self.T,
-                self.s,
-                number_of_classes=2,
-            )
-            self.tsetlin_machines[action_id] = tm
-        return self.tsetlin_machines[action_id]
+        try:
+            if action_id not in self.tsetlin_machines:
+
+                tm = MultiClassTsetlinMachine(
+                    self.nr_clauses,
+                    self.T,
+                    self.s,
+                    number_of_classes=2,
+                )
+                
+                self.tsetlin_machines[action_id] = tm
+
+            return self.tsetlin_machines[action_id]
+        
+        except Exception as e:
+            print(f"TM creation error: {e}")
+            print(f"Total features: {self.feature_transformer.total_features}")
+            raise
 
     def _calculate_priority(self, env, action) -> float:
+
         """Calculate priority score using Tsetlin Machine prediction and scheduling factors."""
         # Get state features for TM
         state_features = self.feature_transformer.transform(env.current_state)
@@ -100,35 +107,44 @@ class DoubleQTsetlinScheduler:
         total_time = max(1, env.total_time)
         machine_utilization = machine_time / total_time
         
-        # Combine Q-values from both tables
-        q1 = self.q_table_1[action.job, action.machine, action.operation]
-        q2 = self.q_table_2[action.job, action.machine, action.operation]
-        avg_q_value = (q1 + q2) / 2
-        
-        # Calculate final priority using all components
+        # Basic scheduling priority
         scheduling_priority = remaining_time * (1 - machine_utilization)
-        final_priority = 0.4 * scheduling_priority + 0.3 * tm_prediction + 0.3 * avg_q_value
+        
+        # Combine TM prediction with scheduling priority (weighted sum)
+        final_priority = 0.7 * scheduling_priority + 0.3 * tm_prediction
         
         return final_priority
 
     def _select_action(self, env) -> Any:
-        """Select action using combined Double Q-learning and TM approach."""
+        """Select action with improved validation and debugging."""
         possible_actions = env.get_possible_actions()
         
         if not possible_actions:
             return None
             
         try:
+            # Log available actions for debugging
+            logging.debug(f"Available actions: {len(possible_actions)}")
+            for i, action in enumerate(possible_actions):
+                logging.debug(f"Action {i}: Job {action.job}, Machine {action.machine}")
+            
             # Enhanced exploration vs exploitation
             if self.rng.random() < self.exploration_rate:
+                # Use smart exploration
                 priorities = []
                 valid_actions = []
                 
                 for action in possible_actions:
-                    if self._is_valid_action(action):
-                        priority = self._calculate_priority(env, action)
-                        priorities.append(max(0.0, priority))
-                        valid_actions.append(action)
+                    try:
+                        # Validate action before calculating priority
+                        if (0 <= action.job < len(env.jobs) and 
+                            0 <= action.machine < env.num_machines):
+                            priority = self._calculate_priority(env, action)
+                            priorities.append(max(0.0, priority))
+                            valid_actions.append(action)
+                    except Exception as e:
+                        logging.warning(f"Error calculating priority: {e}")
+                        continue
                 
                 if valid_actions:
                     total_priority = sum(priorities)
@@ -137,98 +153,87 @@ class DoubleQTsetlinScheduler:
                         return valid_actions[self.rng.choice(len(valid_actions), p=probabilities)]
                     return self.rng.choice(valid_actions)
             
-            # Greedy selection using average of both Q-tables
+            # Greedy selection
             best_action = None
             best_priority = float('-inf')
 
             for action in possible_actions:
-                if self._is_valid_action(action):
+                try:
                     priority = self._calculate_priority(env, action)
                     if priority > best_priority:
                         best_priority = priority
                         best_action = action
+                except Exception as e:
+                    logging.warning(f"Error in greedy selection: {e}")
+                    continue
             
-            return best_action or possible_actions[0]
+            if best_action is None:
+                logging.warning("No valid action found in greedy selection")
+                return possible_actions[0]
+                
+            return best_action
             
         except Exception as e:
             logging.error(f"Error in action selection: {e}")
             if possible_actions:
                 return possible_actions[0]
             return None
-
+    
     def _update_models(self, env, action, prev_time):
-        """Update both Q-tables and Tsetlin Machine based on the action taken."""
         try:
-            # Calculate rewards
+            # Calculate rewards based on time and utilization
             time_reward = -(env.total_time - prev_time)
             utils = env.get_machine_utilization()
             util_reward = np.mean(utils) * 10
+
+            # Combined reward focusing on minimizing time 
             combined_reward = 0.8 * time_reward + 0.2 * util_reward
             scaled_reward = combined_reward * 100
 
-            # Randomly choose which Q-table to update
-            update_first_table = self.rng.random() < 0.5
-            
-            # Get future Q-values from the opposite table
+            # Get future Q-values and update Q-table
             possible_actions = env.get_possible_actions()
             future_q_values = []
 
             for a in possible_actions:
                 if self._is_valid_action(a):
-                    if update_first_table:
-                        # If updating Q1, use Q2 for future value estimation
-                        future_q_values.append(
-                            self.q_table_2[a.job, a.machine, a.operation]
-                        )
-                    else:
-                        # If updating Q2, use Q1 for future value estimation
-                        future_q_values.append(
-                            self.q_table_1[a.job, a.machine, a.operation]
-                        )
+                    future_q_values.append(
+                        self.q_table[a.job, a.machine, a.operation]
+                    )
 
             max_future_q = max(future_q_values) if future_q_values else 0.0
+            current_q = self.q_table[action.job, action.machine, action.operation]
             
-            # Update the selected Q-table
-            if update_first_table:
-                current_q = self.q_table_1[action.job, action.machine, action.operation]
-                new_q = current_q + self.learning_rate * (
-                    scaled_reward + self.discount_factor * max_future_q - current_q
-                )
-                self.q_table_1[action.job, action.machine, action.operation] = new_q
-            else:
-                current_q = self.q_table_2[action.job, action.machine, action.operation]
-                new_q = current_q + self.learning_rate * (
-                    scaled_reward + self.discount_factor * max_future_q - current_q
-                )
-                self.q_table_2[action.job, action.machine, action.operation] = new_q
+            new_q = current_q + self.learning_rate * (
+                scaled_reward + self.discount_factor * max_future_q - current_q
+            )
+            
+            self.q_table[action.job, action.machine, action.operation] = new_q
 
             # Update TM
             state_features = self.feature_transformer.transform(env.current_state)
             action_tm = self._get_or_create_tm(action.job * env.num_machines + action.machine)
-            
-            # Use average Q-value improvement for TM classification
-            avg_old_q = (self.q_table_1[action.job, action.machine, action.operation] + 
-                        self.q_table_2[action.job, action.machine, action.operation]) / 2
-            avg_new_q = (new_q + 
-                        (self.q_table_2 if update_first_table else self.q_table_1)[action.job, action.machine, action.operation]) / 2
-            
-            tm_class = 1 if avg_new_q > avg_old_q else 0
+            tm_class = 1 if new_q > current_q else 0
             
             features_reshaped = state_features.reshape(1, -1)
             action_tm.fit(features_reshaped, np.array([tm_class]), epochs=100)
+            
+            # Print clauses after training
+            # print(f"\nClauses for action (job={action.job}, machine={action.machine}):")
+            # action_tm.print_clauses()
+
 
         except Exception as e:
             logging.error(f"Error in model updates: {e}")
             raise
 
     def _is_valid_action(self, action):
-        """Check if action indices are within Q-table dimensions."""
-        return (action.job < self.q_table_1.shape[0] and
-                action.machine < self.q_table_1.shape[1] and 
-                action.operation < self.q_table_1.shape[2])
+        return (action.job < self.q_table.shape[0] and
+                action.machine < self.q_table.shape[1] and 
+                action.operation < self.q_table.shape[2])
+
 
     def _run_episode(self, env, max_steps: int = 1000) -> List[Any]:
-        """Run a single episode."""
+        """Run a single episode with enhanced state tracking."""
         env.reset()
         episode_actions = []
 
@@ -247,9 +252,9 @@ class DoubleQTsetlinScheduler:
         return episode_actions
 
     def solve(self, env, max_steps: int = 1000) -> Tuple[List[Any], int]:
-        """Solve the scheduling problem using Double Q-learning with TM."""
-        if self.q_table_1 is None:
-            self._initialize_q_tables(env)
+        """Enhanced solve method with job completion verification."""
+        if self.q_table is None:
+            self._initialize_q_table(env)
         if self.feature_transformer is None:
             self._initialize_feature_transformer(env)
             
@@ -259,20 +264,27 @@ class DoubleQTsetlinScheduler:
         best_makespan = float('inf')
         
         for episode in range(self.episodes):
+            
+            # Run episode
             episode_actions = self._run_episode(env, max_steps)
             
+            # Verify solution
             env.reset()
+            
             for action in episode_actions:
                 env.step(action)
                 
+            # Check completion
             completed_jobs = sum(1 for job in range(len(env.jobs)) 
                             if all(env.current_state.job_progress[job]))
             
+            # Update best solution if better
             if completed_jobs == len(env.jobs) and env.total_time < best_makespan:
                 best_makespan = env.total_time
                 best_episode_actions = episode_actions.copy()
-                logging.info(f"New best solution found! Makespan: {best_makespan}")
+                logging.info(f"New best solution found! Makespan: {best_makespan}\n")
                 
+            # Decay exploration rate
             self.exploration_rate = max(0.01, self.exploration_rate * 0.999)
 
             if (episode + 1) % 10 == 0:
@@ -282,12 +294,14 @@ class DoubleQTsetlinScheduler:
             logging.error("No complete solution found!")
             return [], 0
             
+        # Final verification
         env.reset()
         for action in best_episode_actions:
             env.step(action)
             
         return best_episode_actions, env.total_time
-    
+
+
 class JSSPFeatureTransformer:
     """Memory-optimized feature transformer for JSSP state spaces"""
     
@@ -318,6 +332,7 @@ class JSSPFeatureTransformer:
         # Calculate feature sizes for each component
         self.machine_times_size = self.n_machines * self.machine_time_bits
         self.job_status_size = self.n_jobs * self.job_status_bits
+        #self.op_status_size = self.n_jobs * self.n_machines                  #changed
         self.op_status_size = self.n_jobs
         
         # Calculate total binary features
@@ -334,13 +349,17 @@ class JSSPFeatureTransformer:
         print(f"Feature transformer initialized:")
         print(f"  ****Machine times: {self.n_machines} machines × {self.machine_time_bits} bits = {self.machine_times_size}")
         print(f"  ***Job status: {self.n_jobs} jobs × {self.job_status_bits} bits = {self.job_status_size}")
+        #print(f"  ***Operation status: {self.n_jobs} jobs × {self.n_machines} = {self.op_status_size}")               #changed
+
         print(f"  ***Operation status: {self.n_jobs} jobs  = {self.op_status_size}")
+
 
     def transform(self, state) -> np.ndarray:
         """
         Transform JSSP state into binary features.
         """
         try:
+            
             binary_features = np.zeros(self.total_features, dtype=np.int32)
             current_idx = 0
 
@@ -402,14 +421,17 @@ class JSSPFeatureTransformer:
                         if current_idx < self.total_features:
                             binary_features[current_idx] = 0
                             current_idx += 1
+
+            #print(f"Final feature count: {current_idx} / {self.total_features}")
             
             return binary_features
         
         except Exception as e:
             print(f"Transform error: {e}")
-            print(f"Current index: {current_idx}")
-            print(f"Binary features shape: {binary_features.shape}")
-            raise ValueError("Error during feature transformation")
+        print(f"Current index: {current_idx}")
+        print(f"Binary features shape: {binary_features.shape}")
+        raise ValueError("Error during feature transformation")
+
 
     def transform_batch(self, states: List) -> np.ndarray:
         """Transform a batch of states into binary features"""

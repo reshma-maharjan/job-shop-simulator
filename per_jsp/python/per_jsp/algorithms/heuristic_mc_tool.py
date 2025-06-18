@@ -6,13 +6,81 @@ import sys
 import numpy as np
 from typing import List, Dict, Any, Tuple, Set
 
+
+
+from ortools.sat.python import cp_model
+
 # Add the parent directory to sys.path to enable imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+#sys.path.append(os.path.abspath("/workspaces/job-shop-simulator"))
 
 # Import only what we know exists for sure
-from environment.job_shop_env import (
+from environment.job_shop_environment import (
     Job, MachineSpec, Operation, JobShopEnvironment, Action
 )
+# # Import only what we know exists for sure
+# from environment.job_shop_env import (
+#     Job, MachineSpec, Operation, JobShopEnvironment, Action
+# )
+
+def apply_fifo_algorithm(jobs: List[Job], machine_specs: List[MachineSpec] = None):
+    """
+    First-In-First-Out algorithm implementation for job shop scheduling
+    
+    Parameters:
+    jobs: List of Job objects
+    machine_specs: List of MachineSpec objects for tool-aware scheduling
+    
+    Returns:
+    Dict containing the schedule and makespan
+    """
+    # Create the environment directly
+    env = JobShopEnvironment(jobs, machine_specs)
+    
+    # Reset the environment
+    env.reset()
+    
+    # Scheduling algorithm logic
+    steps = 0
+    
+    while not env.is_done():
+        steps += 1
+        # Get possible actions from the environment
+        possible_actions = env.get_possible_actions()
+        
+        if not possible_actions:
+            print(f"No valid actions available at step {steps}")
+            break
+        
+        # For FIFO, select jobs in order of their ID (lowest first)
+        selected_action = None
+        min_job_id = float('inf')
+        
+        for action in possible_actions:
+            job_id = action.job
+            
+            if job_id < min_job_id:
+                min_job_id = job_id
+                selected_action = action
+        
+        if selected_action is not None:
+            # Take the step using the selected action
+            env.step(selected_action)
+        else:
+            print(f"Failed to select an action at step {steps}")
+            break
+    
+    print(f"FIFO algorithm - Steps: {steps}")
+    print(f"Final makespan: {env.total_time}")
+    
+    # Generate visualization
+    env.generate_html_gantt("fifo_schedule.html")
+    
+    return {
+        'schedule': env.schedule_entries,
+        'makespan': env.total_time,
+        'metrics': env.get_performance_metrics()
+    }
 
 def apply_spt_algorithm(jobs: List[Job], machine_specs: List[MachineSpec] = None):
     """
@@ -172,6 +240,269 @@ def apply_mwr_algorithm(jobs: List[Job], machine_specs: List[MachineSpec] = None
         'metrics': env.get_performance_metrics()
     }
 
+def apply_fifo_algorithm(jobs: List[Job], machine_specs: List[MachineSpec] = None):
+    """
+    First-In-First-Out algorithm implementation for job shop scheduling
+    
+    Parameters:
+    jobs: List of Job objects
+    machine_specs: List of MachineSpec objects for tool-aware scheduling
+    
+    Returns:
+    Dict containing the schedule and makespan
+    """
+    # Create the environment directly
+    env = JobShopEnvironment(jobs, machine_specs)
+    
+    # Reset the environment
+    env.reset()
+    
+    # Scheduling algorithm logic
+    steps = 0
+    
+    while not env.is_done():
+        steps += 1
+        # Get possible actions from the environment
+        possible_actions = env.get_possible_actions()
+        
+        if not possible_actions:
+            print(f"No valid actions available at step {steps}")
+            break
+        
+        # For FIFO, select jobs in order of their ID (lowest first)
+        selected_action = None
+        min_job_id = float('inf')
+        
+        for action in possible_actions:
+            job_id = action.job
+            
+            if job_id < min_job_id:
+                min_job_id = job_id
+                selected_action = action
+        
+        if selected_action is not None:
+            # Take the step using the selected action
+            env.step(selected_action)
+        else:
+            print(f"Failed to select an action at step {steps}")
+            break
+    
+    print(f"FIFO algorithm - Steps: {steps}")
+    print(f"Final makespan: {env.total_time}")
+    
+    # Generate visualization
+    env.generate_html_gantt("fifo_schedule.html")
+    
+    return {
+        'schedule': env.schedule_entries,
+        'makespan': env.total_time,
+        'metrics': env.get_performance_metrics()
+    }
+def apply_or_tools_algorithm(jobs: List[Job], machine_specs: List[MachineSpec] = None):
+    """
+    Google OR-Tools implementation for job shop scheduling
+    
+    Parameters:
+    jobs: List of Job objects
+    machine_specs: List of MachineSpec objects for tool-aware scheduling
+    
+    Returns:
+    Dict containing the schedule and makespan
+    """
+    # Import OR-Tools modules
+    try:
+        from ortools.sat.python import cp_model
+    except ImportError:
+        print("ERROR: Google OR-Tools is not installed. Please install using:")
+        print("pip install ortools")
+        return {
+            'schedule': [],
+            'makespan': float('inf'),
+            'metrics': {'error': 'OR-Tools not installed'}
+        }
+    
+    # Create a CP-SAT model
+    model = cp_model.CpModel()
+    
+    # Define the machines and jobs data structures
+    num_machines = max([op.machine for job in jobs for op in job.operations]) + 1
+    num_jobs = len(jobs)
+    
+    # Create job start times and durations
+    all_operations = []
+    operations_per_job = {}
+    operations_per_machine = {}
+    
+    # Initialize operations per machine
+    for m in range(num_machines):
+        operations_per_machine[m] = []
+    
+    # Create variables for each operation
+    horizon = sum([op.duration for job in jobs for op in job.operations]) * 2
+    
+    # For tracking the makespan
+    makespan = model.NewIntVar(0, horizon, 'makespan')
+    
+    # Process jobs and dependencies
+    for job_id, job in enumerate(jobs):
+        operations_per_job[job_id] = []
+        
+        for op_id, operation in enumerate(job.operations):
+            machine = operation.machine
+            duration = operation.duration
+            
+            # Consider tool change time if machine specs are provided
+            tool_change_time = 0
+            if machine_specs and hasattr(operation, 'required_tools'):
+                # Note: In a real implementation, you would need to track tool state
+                # Here we're making a simplification for demonstration
+                # Estimate a fixed tool change overhead per operation
+                tool_change_time = len(operation.required_tools) * 2  # Simplified estimate
+            
+            # Total operation time including tool changes
+            total_duration = duration + tool_change_time
+            
+            # Create start and end variables for this operation
+            start = model.NewIntVar(0, horizon, f'start_job{job_id}_op{op_id}')
+            end = model.NewIntVar(0, horizon, f'end_job{job_id}_op{op_id}')
+            
+            # Add to operations list
+            interval = model.NewIntervalVar(start, total_duration, end, 
+                                           f'interval_job{job_id}_op{op_id}')
+            
+            all_operations.append({
+                'job': job_id,
+                'op': op_id,
+                'machine': machine,
+                'start': start,
+                'duration': total_duration,
+                'end': end,
+                'interval': interval
+            })
+            
+            operations_per_job[job_id].append(len(all_operations) - 1)
+            operations_per_machine[machine].append(len(all_operations) - 1)
+    
+    # Add precedence constraints within each job
+    for job_id, op_indices in operations_per_job.items():
+        for i in range(len(op_indices) - 1):
+            current_op_idx = op_indices[i]
+            next_op_idx = op_indices[i + 1]
+            
+            model.Add(all_operations[next_op_idx]['start'] >= all_operations[current_op_idx]['end'])
+    
+    # Add job dependencies
+    for job_id, job in enumerate(jobs):
+        if hasattr(job, 'dependent_jobs') and job.dependent_jobs:
+            for dep_job_id in job.dependent_jobs:
+                # The last operation of the dependent job must complete before 
+                # the first operation of the current job
+                if operations_per_job[dep_job_id] and operations_per_job[job_id]:
+                    last_op_of_dep = operations_per_job[dep_job_id][-1]
+                    first_op_of_current = operations_per_job[job_id][0]
+                    
+                    model.Add(all_operations[first_op_of_current]['start'] >= 
+                              all_operations[last_op_of_dep]['end'])
+    
+    # Add operation dependencies
+    for job_id, job in enumerate(jobs):
+        for op_id, operation in enumerate(job.operations):
+            if hasattr(operation, 'dependent_operations') and operation.dependent_operations:
+                for dep_job_id, dep_op_id in operation.dependent_operations:
+                    # Find the indices in all_operations list
+                    current_op_global_idx = operations_per_job[job_id][op_id]
+                    dep_op_global_idx = operations_per_job[dep_job_id][dep_op_id]
+                    
+                    # Add the constraint
+                    model.Add(all_operations[current_op_global_idx]['start'] >= 
+                              all_operations[dep_op_global_idx]['end'])
+    
+    # Add constraints for machines (no overlapping)
+    for machine_id, op_indices in operations_per_machine.items():
+        if len(op_indices) > 1:  # If there are at least 2 operations on this machine
+            intervals = [all_operations[i]['interval'] for i in op_indices]
+            model.AddNoOverlap(intervals)
+    
+    # Set the objective to minimize the makespan (maximum end time)
+    for op in all_operations:
+        model.Add(makespan >= op['end'])
+    
+    model.Minimize(makespan)
+    
+    # Solve the model
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 60.0  # 1 minute timeout
+    status = solver.Solve(model)
+    
+    # Process the results
+    if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+        print(f"OR-Tools found a {'optimal' if status == cp_model.OPTIMAL else 'feasible'} solution!")
+        print(f"Makespan: {solver.Value(makespan)}")
+        
+        # Create the environment to record the schedule
+        env = JobShopEnvironment(jobs, machine_specs)
+        env.reset()
+        
+        # Clear any existing schedule entries
+        env.schedule_entries = []
+        
+        # Create custom schedule entries compatible with the environment
+        for op in all_operations:
+            start_time = solver.Value(op['start'])
+            duration = op['duration']  # This includes any tool change time
+            job_id = op['job']
+            op_id = op['op']
+            machine_id = op['machine']
+            
+            # Create Action object
+            action = Action(job=job_id, operation=op_id, machine=machine_id)
+            
+            # Instead of directly building a schedule entry, let's use the environment's method
+            # This ensures the format is compatible with what the environment expects
+            env.current_time = start_time  # Set current time for recording purposes
+            
+            # We need to manually add entries rather than using step()
+            # Create a custom schedule entry that matches the format expected by the environment
+            # The actual format depends on your JobShopEnvironment implementation
+            
+            # Most job shop environments expect entries that have these attributes directly or as properties
+            class ScheduleEntryAdapter:
+                def __init__(self, action, start_time, end_time):
+                    self.action = action
+                    self.job = action.job
+                    self.operation = action.operation
+                    self.machine = action.machine
+                    self.start_time = start_time
+                    self.end_time = end_time
+                    self.duration = end_time - start_time
+            
+            # Add entry to environment's schedule using the adapter
+            entry = ScheduleEntryAdapter(action, start_time, start_time + duration)
+            env.schedule_entries.append(entry)
+        
+        # Set the total time to the makespan
+        env.total_time = solver.Value(makespan)
+        
+        # Generate visualization
+        try:
+            env.generate_html_gantt("or_tools_schedule.html")
+        except Exception as e:
+            print(f"Failed to generate Gantt chart: {str(e)}")
+        
+        # Return the results
+        return {
+            'schedule': env.schedule_entries,
+            'makespan': solver.Value(makespan),
+            'metrics': env.get_performance_metrics()
+        }
+    else:
+        print("No solution found by OR-Tools.")
+        return {
+            'schedule': [],
+            'makespan': float('inf'),
+            'metrics': {'error': 'No solution found'}
+        }
+
 def apply_min_tool_change_algorithm(jobs: List[Job], machine_specs: List[MachineSpec]):
     """
     Minimum Tool Change algorithm implementation for job shop scheduling
@@ -272,6 +603,12 @@ def compare_algorithms(jobs, machine_specs):
     
     print("\nRunning MWR algorithm...")
     results['MWR'] = apply_mwr_algorithm(jobs, machine_specs)
+
+    print("\nRunning FIFO algorithm...")
+    results['FIFO'] = apply_fifo_algorithm(jobs, machine_specs)
+
+    print("\nRunning OR-Tools algorithm...")
+    results['OR-Tools'] = apply_or_tools_algorithm(jobs, machine_specs)
     
     if machine_specs:
         print("\nRunning Min Tool Change algorithm...")
